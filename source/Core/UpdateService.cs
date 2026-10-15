@@ -63,6 +63,7 @@ internal static class UpdateService
         public string Notes { get; set; } = "";
         public string PackageSha256 { get; set; } = "";
         public string PackageUrl { get; set; } = "";
+        public string HashUrl { get; set; } = "";
         public string Signature { get; set; } = "";
         public List<ManifestFile> Files { get; set; } = new();
     }
