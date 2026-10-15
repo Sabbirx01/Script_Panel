@@ -1,0 +1,74 @@
+name: Build and publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 1.1.0'
+        required: true
+        default: '1.1.0'
+      notes:
+        description: 'Release notes'
+        required: false
+        default: 'GitHub auto-update release.'
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build self-contained panel
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File source/build.ps1
+
+      - name: Assemble safe update package
+        shell: pwsh
+        run: |
+          $v = '${{ inputs.version }}'
+          $tag = if ($v.StartsWith('v')) { $v } else { "v$v" }
+          $stage = Join-Path $env:RUNNER_TEMP 'release-stage'
+          $out = Join-Path $env:RUNNER_TEMP 'release-out'
+          New-Item -ItemType Directory -Force -Path $stage,$out | Out-Null
+          Copy-Item 'output/DeveloperXBulkAccPanel.exe' "$stage/DeveloperXBulkAccPanel.exe"
+          if (Test-Path 'output/.playwright') { Copy-Item 'output/.playwright' "$stage/.playwright" -Recurse -Force }
+          Set-Content "$stage/release-info.txt" -Encoding UTF8 -Value @(
+            "Developer X Bulk Acc Panel $tag"
+            "Repository: https://github.com/Sabbirx01/Script_Panel"
+            "Licence: online RSA validation remains required"
+          )
+          $zip = Join-Path $out "DeveloperXBulkAccPanel-$tag.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content "$zip.sha256" -Encoding ASCII -Value "sha256:$hash"
+          "VERSION=$v" >> $env:GITHUB_ENV
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "ZIP=$zip" >> $env:GITHUB_ENV
+          "HASH=$hash" >> $env:GITHUB_ENV
+          "OUT=$out" >> $env:GITHUB_ENV
+          Write-Host "package=$zip"
+          Write-Host "sha256=$hash"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Developer X Bulk Acc Panel ${{ env.TAG }}
+          body: ${{ inputs.notes }}
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.OUT }}/*.zip
+            ${{ env.OUT }}/*.sha256

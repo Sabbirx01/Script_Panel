@@ -1,0 +1,544 @@
+<UserControl x:Class="AISuitePanel.Views.ToolPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI">
+
+    <UserControl.Resources>
+        <Style x:Key="QtyBox" TargetType="TextBox" BasedOn="{StaticResource S.TextBox}">
+            <Setter Property="Width" Value="120" />
+            <Setter Property="Height" Value="42" />
+            <Setter Property="FontFamily" Value="{StaticResource F.Mono}" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="TinyGhost" TargetType="Button" BasedOn="{StaticResource S.GhostButton}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <!-- column widths are repeated in the header and in every row template -->
+        <Style x:Key="HeadText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+            <Setter Property="Foreground" Value="{StaticResource B.TextMuted}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="StatCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource B.Card}" />
+            <Setter Property="BorderBrush" Value="{StaticResource B.Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+        </Style>
+        <Style x:Key="StatLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+            <Setter Property="Foreground" Value="{StaticResource B.TextMuted}" />
+        </Style>
+        <Style x:Key="StatValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+            <Setter Property="Foreground" Value="{StaticResource B.Text}" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+        <Style x:Key="TabBtn" TargetType="Button" BasedOn="{StaticResource S.GhostButton}">
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ============================== BACK ============================== -->
+        <Button x:Name="BackButton" Grid.Row="0"
+                Content="⬅  BACK TO DASHBOARD"
+                Style="{StaticResource S.GhostButton}"
+                HorizontalAlignment="Left"
+                Margin="34,24,0,0"
+                Click="OnBack" />
+
+        <!-- ============================== TITLE ============================== -->
+        <StackPanel Grid.Row="1" Margin="34,16,34,0">
+            <TextBlock x:Name="TitleText" Style="{StaticResource T.Title}" FontSize="21" />
+            <TextBlock x:Name="SubTitle" Style="{StaticResource T.Sub}" FontSize="12.5" Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Button x:Name="OpenOfficialButton" Content="OPEN OFFICIAL SITE"
+                        Style="{StaticResource S.GhostButton}" Click="OnOpenOfficialSite" />
+                <Button Content="OPEN TOOL WORKSPACE" Style="{StaticResource S.GhostButton}"
+                        Margin="10,0,0,0" Click="OnOpenWorkspace" />
+            </StackPanel>
+            <TextBlock x:Name="WorkspaceHint" Style="{StaticResource T.Mini}"
+                       TextWrapping="Wrap" Margin="0,8,0,0" />
+        </StackPanel>
+
+        <!-- ============================== BODY ============================== -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="34,18,22,26">
+
+                <!-- Accio-style summary cards and tabs -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource StatCard}">
+                        <StackPanel><TextBlock Text="TOTAL ACCOUNTS" Style="{StaticResource StatLabel}" />
+                            <TextBlock x:Name="StatTotal" Text="0" Style="{StaticResource StatValue}" /></StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource StatCard}">
+                        <StackPanel><TextBlock Text="ACTIVE TODAY" Style="{StaticResource StatLabel}" />
+                            <TextBlock x:Name="StatActiveToday" Text="0" Style="{StaticResource StatValue}" Foreground="{StaticResource B.Ok}" /></StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource StatCard}">
+                        <StackPanel><TextBlock Text="LAST RUN" Style="{StaticResource StatLabel}" />
+                            <TextBlock x:Name="StatLastRun" Text="—" Style="{StaticResource StatValue}" FontSize="14" Foreground="{StaticResource B.AccentB}" /></StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Style="{StaticResource StatCard}" Margin="0">
+                        <StackPanel><TextBlock Text="COOKIES / POOL" Style="{StaticResource StatLabel}" />
+                            <TextBlock x:Name="StatCookies" Text="0" Style="{StaticResource StatValue}" Foreground="{StaticResource B.Ok}" /></StackPanel>
+                    </Border>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                    <Button Content="▣ Dashboard" Style="{StaticResource TabBtn}" />
+                    <Button Content="▶ Create" Style="{StaticResource TabBtn}" />
+                    <Button Content="▣ Login" Style="{StaticResource TabBtn}" />
+                    <Button Content="⚙ Settings" Style="{StaticResource TabBtn}" />
+                </StackPanel>
+
+                <!-- ==================== 1. CREATE ACCOUNT ==================== -->
+                <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="1. CREATE ACCOUNT" Style="{StaticResource T.Section}" />
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <TextBlock Text="Select Mail Source:" Style="{StaticResource T.Label}" />
+                        <RadioButton x:Name="SrcTemp" GroupName="Src"
+                                     Style="{StaticResource S.RadioButton}" Content="Temp Mail" />
+                        <RadioButton x:Name="SrcDotted" GroupName="Src" Margin="0,10,0,0"
+                                     Style="{StaticResource S.RadioButton}"
+                                     Content="Dotted Gmail (Auto Rotation)" />
+                        <RadioButton x:Name="SrcDomain" GroupName="Src" Margin="0,10,0,0"
+                                     Style="{StaticResource S.RadioButton}" Content="Custom Domain" />
+                        <RadioButton x:Name="SrcCustomMail" GroupName="Src" Margin="0,10,0,0"
+                                     Style="{StaticResource S.RadioButton}" Content="Custom Mail (one-shot)" />
+                        <RadioButton x:Name="SrcSemi" GroupName="Src" Margin="0,10,0,0"
+                                     Style="{StaticResource S.RadioButton}" Content="Semi Automation (manual OTP)" />
+                        <RadioButton x:Name="SrcNoProxy" GroupName="Src" Margin="0,10,0,0"
+                                     Style="{StaticResource S.RadioButton}" Content="No Proxy (direct)" />
+
+                        <TextBlock x:Name="SrcHint" Style="{StaticResource T.Mini}" Margin="29,10,0,0" />
+
+                        <Grid Margin="0,20,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Account Quantity :"
+                                       Style="{StaticResource T.Label}"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+
+                            <TextBox Grid.Column="1" x:Name="QtyBox" Text="10"
+                                     Style="{StaticResource QtyBox}"
+                                     PreviewTextInput="OnDigitsOnly" />
+
+                            <Button Grid.Column="2" x:Name="StartButton"
+                                    Content="▶  START CREATION"
+                                    Style="{StaticResource S.PrimaryButton}"
+                                    HorizontalAlignment="Left"
+                                    Width="230" Margin="18,0,0,0"
+                                    Click="OnStartCreation" />
+                        </Grid>
+
+                        <!-- progress -->
+                        <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,18,0,0">
+                            <Grid>
+                                <TextBlock x:Name="ProgressText" Text="00 / 00"
+                                           FontFamily="{StaticResource F.Mono}" FontSize="12"
+                                           Foreground="{StaticResource B.TextDim}" />
+                                <Button x:Name="StopButton" Content="⏹  STOP"
+                                        Style="{StaticResource S.GhostButton}"
+                                        HorizontalAlignment="Right"
+                                        Click="OnStop" />
+                            </Grid>
+                            <ProgressBar x:Name="Progress" Height="10" Margin="0,10,0,0"
+                                         Minimum="0" Maximum="100" Value="0"
+                                         Background="#FF0B1220"
+                                         Foreground="{StaticResource B.AccentA}"
+                                         BorderThickness="0" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="ResultText" Style="{StaticResource T.Mini}"
+                                   Margin="0,12,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 2. LOGIN ACCOUNT ==================== -->
+                <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="2. LOGIN ACCOUNT (COOKIE BASED)" Style="{StaticResource T.Section}" />
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <TextBlock x:Name="TotalCookiesText"
+                                   Text="Total Available Cookies: 0"
+                                   FontSize="13.5"
+                                   Foreground="{StaticResource B.Text}" />
+
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Enter Login Quantity :"
+                                       Style="{StaticResource T.Label}"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+
+                            <TextBox Grid.Column="1" x:Name="LoginQtyBox" Text="5"
+                                     Style="{StaticResource QtyBox}"
+                                     PreviewTextInput="OnDigitsOnly" />
+
+                            <Button Grid.Column="2" x:Name="LoginButton"
+                                    Content="🔓  LOGIN SELECTED COOKIES"
+                                    Style="{StaticResource S.PrimaryButton}"
+                                    HorizontalAlignment="Left"
+                                    Width="270" Margin="18,0,0,0"
+                                    Click="OnLoginCookies" />
+                        </Grid>
+
+                        <TextBlock Text="যত সংখ্যা দিবেন ততগুলো কুকি লগইন করা হবে। টেবিল থেকে রো সিলেক্ট করলে শুধু ওগুলোই চলবে।"
+                                   Style="{StaticResource T.Mini}" Margin="0,10,0,0" />
+
+                        <StackPanel x:Name="LoginProgressPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                            <Grid>
+                                <TextBlock x:Name="LoginProgressText" Text="00 / 00"
+                                           FontFamily="{StaticResource F.Mono}" FontSize="12"
+                                           Foreground="{StaticResource B.TextDim}" />
+                                <Button x:Name="LoginStopButton" Content="⏹  STOP"
+                                        Style="{StaticResource S.GhostButton}"
+                                        HorizontalAlignment="Right"
+                                        Click="OnStop" />
+                            </Grid>
+                            <ProgressBar x:Name="LoginProgress" Height="10" Margin="0,10,0,0"
+                                         Minimum="0" Maximum="100" Value="0"
+                                         Background="#FF0B1220"
+                                         Foreground="{StaticResource B.AccentB}"
+                                         BorderThickness="0" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LoginResultText" Style="{StaticResource T.Mini}"
+                                   Margin="0,12,0,0" Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 3. MANAGER ==================== -->
+                <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="3. ACCOUNT &amp; COOKIE MANAGER" Style="{StaticResource T.Section}" />
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <!-- table head -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="46" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="62" />
+                                <ColumnDefinition Width="78" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+
+                            <CheckBox Grid.Column="0" x:Name="SelectAllCheck"
+                                      Style="{StaticResource S.CheckBox}"
+                                      VerticalAlignment="Center"
+                                      Click="OnSelectAll" ToolTip="Select all" />
+                            <TextBlock Grid.Column="1" Text="ID" Style="{StaticResource HeadText}" />
+                            <TextBlock Grid.Column="2" Text="MAIL USED" Style="{StaticResource HeadText}" />
+                            <TextBlock Grid.Column="3" Text="STATUS" Style="{StaticResource HeadText}" />
+                            <TextBlock Grid.Column="4" Text="COOKIE STATUS" Style="{StaticResource HeadText}" />
+                        </Grid>
+
+                        <Rectangle Height="1" Fill="{StaticResource B.Line}" />
+
+                        <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                            <ItemsControl x:Name="AccountList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40" />
+                                                <ColumnDefinition Width="46" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="78" />
+                                                <ColumnDefinition Width="44" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0"
+                                                      Style="{StaticResource S.CheckBox}"
+                                                      IsChecked="{Binding Selected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" />
+
+                                            <TextBlock Grid.Column="1" Text="{Binding IdLabel}"
+                                                       FontFamily="{StaticResource F.Mono}" FontSize="12"
+                                                       Foreground="{StaticResource B.TextDim}"
+                                                       VerticalAlignment="Center" />
+
+                                            <TextBlock Grid.Column="2" Text="{Binding EmailUsed}"
+                                                       FontFamily="{StaticResource F.Mono}" FontSize="12"
+                                                       Foreground="{StaticResource B.Text}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+
+                                            <TextBlock Grid.Column="3" Text="{Binding StatusLabel}"
+                                                       FontSize="11.5" FontFamily="Segoe UI Semibold"
+                                                       Foreground="{Binding StatusColor}"
+                                                       VerticalAlignment="Center" />
+
+                                            <TextBlock Grid.Column="4" Text="{Binding CookieLabel}"
+                                                       FontSize="11.5"
+                                                       Foreground="{StaticResource B.TextDim}"
+                                                       VerticalAlignment="Center" />
+
+                                            <Button Grid.Column="5" x:Name="ViewCookieButton"
+                                                    Style="{StaticResource TinyGhost}"
+                                                    Content="View"
+                                                    Click="OnViewCookie" />
+
+                                            <Button Grid.Column="6"
+                                                    Style="{StaticResource TinyGhost}"
+                                                    Content="Export"
+                                                    Margin="6,0,0,0"
+                                                    Click="OnExportCookie" />
+
+                                            <Button Grid.Column="7"
+                                                    Style="{StaticResource TinyGhost}"
+                                                    Content="🗑"
+                                                    Margin="6,0,0,0"
+                                                    Click="OnDeleteRow"
+                                                    ToolTip="Delete this account and its cookie" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <TextBlock x:Name="AccountEmpty" Text="No accounts yet. Create one above."
+                                   Style="{StaticResource T.Mini}" Margin="2,10,0,0" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <Button Content="📁  EXPORT ALL COOKIES (JSON/TXT)"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Click="OnExportAll" />
+                            <Button Content="🗑️  DELETE ALL"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Margin="10,0,0,0"
+                                    Click="OnDeleteAll" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== 4. TOOL SETTINGS ==================== -->
+                <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="4. TOOL SETTINGS" Style="{StaticResource T.Section}" />
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Delay Between Action (sec) :"
+                                       Style="{StaticResource T.Label}" VerticalAlignment="Center" Margin="0,0,0,12" />
+                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="DelayBox"
+                                     Style="{StaticResource QtyBox}" HorizontalAlignment="Left"
+                                     Margin="0,0,0,12"
+                                     PreviewTextInput="OnDigitsOnly" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Threads / Parallel :"
+                                       Style="{StaticResource T.Label}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                                <TextBox x:Name="ThreadsBox" Style="{StaticResource QtyBox}"
+                                         PreviewTextInput="OnDigitsOnly" />
+                                <TextBlock x:Name="ThreadsHint" Style="{StaticResource T.Mini}"
+                                           VerticalAlignment="Center" Margin="14,0,0,0" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Button x:Name="SaveToolSettingsButton"
+                                Content="💾  SAVE TOOL SETTINGS"
+                                Style="{StaticResource S.GhostButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,20,0,0"
+                                Click="OnSaveToolSettings" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ==================== ACTIVITY LOG ==================== -->
+                <Border Style="{StaticResource S.Card}">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="ACTIVITY LOG" Style="{StaticResource T.Section}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="CLEAR" Style="{StaticResource TinyGhost}"
+                                        Click="OnClearLog" />
+                                <Button Content="🖹  COPY LOG" Style="{StaticResource TinyGhost}"
+                                        Margin="8,0,0,0" Click="OnCopyLog" />
+                            </StackPanel>
+                        </Grid>
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="LogList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="74" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Grid.Column="0" Text="{Binding Time}"
+                                                       FontFamily="{StaticResource F.Mono}" FontSize="11"
+                                                       Foreground="{StaticResource B.TextMuted}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding KindLabel}"
+                                                       FontFamily="Segoe UI Semibold" FontSize="10.5"
+                                                       Foreground="{Binding KindColor}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                                       FontSize="11.5"
+                                                       Foreground="{StaticResource B.TextDim}"
+                                                       TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ============================== OVERLAYS ============================== -->
+
+        <!-- cookie viewer -->
+        <Grid x:Name="ViewerOverlay" Grid.RowSpan="3" Visibility="Collapsed"
+              Background="#B205080E">
+            <Border Style="{StaticResource S.Card}" Width="720" MaxHeight="560"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="#FF0D1526">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock x:Name="ViewerTitle" Text="COOKIE" Style="{StaticResource T.Section}" />
+                    <Rectangle Grid.Row="0" Style="{StaticResource S.Rule}" Margin="0,12,0,14" />
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <TextBox x:Name="ViewerBody"
+                                 Style="{StaticResource S.TextBox}"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 Height="Auto"
+                                 FontFamily="{StaticResource F.Mono}"
+                                 FontSize="11.5"
+                                 VerticalContentAlignment="Top"
+                                 Padding="12,10" />
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Content="📋  COPY" Style="{StaticResource S.GhostButton}"
+                                Click="OnCopyViewer" />
+                        <Button Content="💾  SAVE AS…" Style="{StaticResource S.GhostButton}"
+                                Margin="10,0,0,0" Click="OnSaveViewer" />
+                        <Button x:Name="ViewerCloseButton" Content="CLOSE"
+                                Style="{StaticResource S.GhostButton}"
+                                Margin="10,0,0,0" Click="OnCloseOverlays" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- export-all format picker -->
+        <Grid x:Name="ExportOverlay" Grid.RowSpan="3" Visibility="Collapsed"
+              Background="#B205080E">
+            <Border Style="{StaticResource S.Card}" Width="440"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="#FF0D1526">
+                <StackPanel>
+                    <TextBlock Text="EXPORT ALL COOKIES" Style="{StaticResource T.Section}" />
+                    <Rectangle Style="{StaticResource S.Rule}" />
+                    <TextBlock x:Name="ExportSummary" Style="{StaticResource T.Sub}" FontSize="12.5" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                        <Button Content="JSON" Style="{StaticResource S.PrimaryButton}"
+                                Width="120" Click="OnExportAllJson" />
+                        <Button Content="TXT" Style="{StaticResource S.GhostButton}"
+                                Width="120" Margin="10,0,0,0" Click="OnExportAllTxt" />
+                        <Button Content="CANCEL" Style="{StaticResource S.GhostButton}"
+                                Margin="10,0,0,0" Click="OnCloseOverlays" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- delete-all confirmation -->
+        <Grid x:Name="DeleteOverlay" Grid.RowSpan="3" Visibility="Collapsed"
+              Background="#B205080E">
+            <Border Style="{StaticResource S.Card}" Width="500"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="#FF0D1526" BorderBrush="#55F87171">
+                <StackPanel>
+                    <TextBlock Text="DELETE EVERYTHING" Style="{StaticResource T.Section}"
+                               Foreground="#FFFCA5A5" />
+                    <Rectangle Style="{StaticResource S.Rule}" />
+
+                    <TextBlock x:Name="DeleteSummary" Style="{StaticResource T.Sub}" FontSize="12.5" />
+                    <TextBlock Text="Type DELETE to confirm. This cannot be undone."
+                               Style="{StaticResource T.Mini}" Margin="0,12,0,10" />
+
+                    <TextBox x:Name="DeleteConfirmBox" Style="{StaticResource S.TextBox}"
+                             FontFamily="{StaticResource F.Mono}"
+                             TextChanged="OnDeleteConfirmChanged" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                        <Button x:Name="DeleteConfirmButton"
+                                Content="🗑️  DELETE ALL"
+                                Style="{StaticResource S.PrimaryButton}"
+                                Width="190"
+                                IsEnabled="False"
+                                Click="OnConfirmDeleteAll" />
+                        <Button Content="CANCEL" Style="{StaticResource S.GhostButton}"
+                                Margin="10,0,0,0" Click="OnCloseOverlays" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

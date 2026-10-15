@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <AssemblyName>DeveloperXBulkAccPanel</AssemblyName>
+    <RootNamespace>AISuitePanel</RootNamespace>
+    <AssemblyTitle>Developer X Bulk Acc Panel</AssemblyTitle>
+    <Product>Developer X Bulk Acc Panel</Product>
+    <Company>Developer X</Company>
+    <Description>Developer X Bulk Acc Panel - activation, dashboard and per-tool panels.</Description>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <Copyright>Copyright (c) 2026 Developer X</Copyright>
+
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Browser automation for the Accio AI tool (Phase 1: signup form, Phase 2: mail verification).
+
+         Pinned to match the browser build the portable bundle actually ships:
+         Python playwright in the tools is 1.62.0, whose chromium revision is
+         1234, and this package is what decides which revision the PANEL's own
+         Playwright wants.  At 1.49.0 it wanted chromium-1148, which is not in
+         the bundle — so the panel could never use the browser we ship and its
+         login tab needed a separate `playwright install` on every customer PC. -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
+  </ItemGroup>
+
+</Project>

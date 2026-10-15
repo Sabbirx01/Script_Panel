@@ -1,0 +1,32 @@
+<UserControl x:Class="AISuitePanel.Views.ToolActivationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI">
+    <Grid>
+        <Border Width="540" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Style="{StaticResource S.Card}" Padding="38,34">
+            <StackPanel>
+                <TextBlock x:Name="ToolTitle" Style="{StaticResource T.Title}" FontSize="21"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="This tool has its own licence. Enter a valid key to unlock it."
+                           Style="{StaticResource T.Sub}" FontSize="12.5"
+                           TextAlignment="Center" HorizontalAlignment="Center" Margin="0,10,0,0" />
+                <TextBlock x:Name="ProductText" Style="{StaticResource T.Hint}"
+                           TextAlignment="Center" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                <Rectangle Style="{StaticResource S.Rule}" Margin="0,24,0,22" />
+                <TextBlock Text="Enter Tool Licence Key:" Style="{StaticResource T.Label}" />
+                <TextBox x:Name="KeyBox" Style="{StaticResource S.TextBox}"
+                         FontFamily="{StaticResource F.Mono}" FontSize="16" Height="52"
+                         CharacterCasing="Upper" TextChanged="OnKeyTextChanged"
+                         PreviewKeyDown="OnKeyKeyDown" GotKeyboardFocus="OnKeyFocused" />
+                <Button x:Name="ActivateButton" Content="UNLOCK TOOL"
+                        Style="{StaticResource S.PrimaryButton}" Margin="0,18,0,0"
+                        IsEnabled="False" Click="OnActivate" />
+                <TextBlock x:Name="StatusText" Style="{StaticResource T.Mini}"
+                           TextAlignment="Center" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                <Button Content="⬅  BACK TO DASHBOARD" Style="{StaticResource S.GhostButton}"
+                        HorizontalAlignment="Center" Margin="0,16,0,0" Click="OnBack" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
