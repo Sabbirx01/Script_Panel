@@ -21,7 +21,7 @@
 </div>
 </div></div>
 <script>
-const CFG={releaseApi:'https://api.github.com/repos/Sabbirx01/Script_Panel/releases/latest',licenseApi:'https://license.automationservice.online/api/validate.php',whatsapp:'8801410014442'};
+const CFG={releaseApi:'https://api.github.com/repos/Sabbirx01/Script_Panel/releases/latest',licenseApi:'https://license.automationservice.online/download.php',whatsapp:'8801410014442'};
 const $=id=>document.getElementById(id), show=(id,on)=>$(id).classList.toggle('show',on);
 function say(kind,text){const x=$('msg');x.className='box show '+kind;x.textContent=text}
 function device(){let d=sessionStorage.getItem('dx-download-device');if(!d){d='WEB-'+crypto.randomUUID().replaceAll('-','').slice(0,28).toUpperCase();sessionStorage.setItem('dx-download-device',d)}return d}
