@@ -49,6 +49,28 @@ crash.log
 app-root.txt
 update-version.txt
 
+# Release tree - large local artefacts (exe, zip, feed), never in git
+Build/
+Version/
+Sources/
+Encrypt/
+Publish/
+**/update-test/
+fake-update-feed/
+customer-update-test/
+
+# Project folders that must never land in git (huge, or local-only).
+# A single "git add ." used to be able to push ~290 MB of these.
+tools/
+accio/
+connector/
+deploy/
+security-audit/
+# temp\ holds every loose script/doc. The one file git already tracks is
+# re-included so its history is kept; "temp/" alone would block the negation.
+temp/*
+!temp/publish-github.ps1
+
 # Local backups and probes
 _archive/
 _backups/

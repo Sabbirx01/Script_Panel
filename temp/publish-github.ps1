@@ -7,7 +7,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# ei script ekhon temp\-e thake, tai project root = script folder-er parent
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $repo = 'Sabbirx01/Script_Panel'
 $tag = if ($Version.StartsWith('v')) { $Version } else { "v$Version" }
 $build = Join-Path $root 'source\build.ps1'
