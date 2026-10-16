@@ -160,10 +160,24 @@ if (-not $SkipBundle) {
     Head 'Reusing the existing bundle'
 }
 
+$mainExe = Join-Path $root 'output\DeveloperXBulkAccPanel.exe'
 $panelExe = Join-Path $Bundle 'DeveloperXBulkAccPanel.exe'
+if (-not (Test-Path -LiteralPath $mainExe)) { Bad "MAIN working exe is missing: $mainExe"; exit 1 }
 if (-not (Test-Path -LiteralPath $panelExe)) { Bad "Panel exe not in the bundle: $panelExe"; exit 1 }
+
+# Hard identity gate: the encrypted customer payload must contain the exact
+# working EXE selected by the operator, not an older build from another folder.
+$mainHash = (Get-FileHash -LiteralPath $mainExe -Algorithm SHA256).Hash.ToUpperInvariant()
+$bundleHash = (Get-FileHash -LiteralPath $panelExe -Algorithm SHA256).Hash.ToUpperInvariant()
+Write-Host "  MAIN output hash  : $mainHash"
+Write-Host "  BUNDLE panel hash : $bundleHash"
+if ($mainHash -ne $bundleHash) {
+    Bad "REFUSING TO PACK: bundle panel EXE is not byte-identical to output\\DeveloperXBulkAccPanel.exe"; exit 1
+}
+Ok 'identity gate passed: encrypted payload uses the exact main output EXE'
+
 if (-not (Test-Path -LiteralPath (Join-Path $Bundle '.playwright'))) {
-    Bad "bundle\.playwright is missing - the panel cannot start without it."; exit 1
+    Bad "bundle\\.playwright is missing - the panel cannot start without it."; exit 1
 }
 
 # ------------------------------------------------------------------ 3. leak scan
