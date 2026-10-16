@@ -27,7 +27,11 @@ body:before,body:after{content:"";position:fixed;pointer-events:none;border-radi
 </div>
 </div></div></div>
 <script>
-const CFG={releaseApi:'https://api.github.com/repos/Sabbirx01/Script_Panel/releases/latest',licenseApi:'https://license.automationservice.online/api/download.php',whatsapp:'8801410014442'};
+// Endpoints are kept base64-encoded so the page source does not grep clean.
+// Honest note: this is deterrence only. The browser must call these URLs, so
+// anyone watching the Network tab still sees them plainly.
+const _u=s=>atob(s);
+const CFG={releaseApi:_u('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9TYWJiaXJ4MDEvU2NyaXB0X1BhbmVsL3JlbGVhc2VzL2xhdGVzdA=='),licenseApi:_u('aHR0cHM6Ly9saWNlbnNlLmF1dG9tYXRpb25zZXJ2aWNlLm9ubGluZS9hcGkvZG93bmxvYWQucGhw'),whatsapp:_u('ODgwMTQxMDAxNDQ0Mg==')};
 const $=id=>document.getElementById(id), show=(id,on)=>$(id).classList.toggle('show',on);
 function say(kind,text){const x=$('msg');x.className='box show '+kind;x.textContent=text}
 function device(){let d=sessionStorage.getItem('dx-download-device');if(!d){d='WEB-'+crypto.randomUUID().replaceAll('-','').slice(0,28).toUpperCase();sessionStorage.setItem('dx-download-device',d)}return d}

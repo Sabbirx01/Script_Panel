@@ -55,6 +55,18 @@ Version/
 Sources/
 Encrypt/
 Publish/
+
+# One-file setup launcher: payload + publish output are ~600 MB
+launcher/payload/
+launcher/publish/
+launcher/bin/
+launcher/obj/
+
+# The AES key that unlocks the packed panel, and the generated C# that holds
+# it. These must NEVER be committed - anyone with the key can unpack the
+# customer setup.
+launcher/payload.key
+launcher/PayloadKey.g.cs
 **/update-test/
 fake-update-feed/
 customer-update-test/
@@ -70,6 +82,10 @@ security-audit/
 # re-included so its history is kept; "temp/" alone would block the negation.
 temp/*
 !temp/publish-github.ps1
+# The release entry points belong in the repo, or nobody could rebuild the
+# one-file setup. Everything else in temp\ stays local.
+!temp/build-launcher.ps1
+!temp/Publish-Panel.ps1
 
 # Local backups and probes
 _archive/
