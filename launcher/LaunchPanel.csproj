@@ -28,7 +28,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AssemblyName>DeveloperXPanel-Setup</AssemblyName>
     <RootNamespace>LaunchPanel</RootNamespace>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DebugType>none</DebugType>

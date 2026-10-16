@@ -397,6 +397,39 @@ public static class AppPaths
                        "AISuitePanel");
 
     /// <summary>
+    /// Turns a verified-existing path into an absolute one.
+    ///
+    /// <para>Why this matters: a relative entry such as
+    /// <c>tools\zai\Zcreatev2.py</c> is tested with <c>File.Exists</c> against
+    /// the panel's working directory, and then handed to a child process whose
+    /// working directory is <c>tools\zai</c>. Python resolved it a second time
+    /// and looked for <c>tools\zai\tools\zai\Zcreatev2.py</c>. Reproduced with
+    /// the bundled interpreter:</para>
+    ///
+    /// <code>
+    /// cwd=tools\zai, argument relative -> exit 2
+    ///   can't open file '...\tools\zai\tools\zai\dummy.py': [Errno 2]
+    /// cwd=tools\zai, argument absolute -> exit 0
+    /// </code>
+    ///
+    /// <para>Resolving once here keeps every tool path valid no matter which
+    /// folder the panel was started from, while the value written back to
+    /// tool-settings.json stays relative so the install still works from any
+    /// drive letter.</para>
+    /// </summary>
+    private static string Absolute(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch
+        {
+            return path;                        // odd path: leave it as written
+        }
+    }
+
+    /// <summary>
     /// Resolves a path from tool-settings.json.
     ///
     /// The configured path wins whenever it is actually there, so a development
@@ -417,7 +450,7 @@ public static class AppPaths
 
         if (File.Exists(value) || Directory.Exists(value))
         {
-            return value;                       // what the operator configured
+            return Absolute(value);             // what the operator configured
         }
 
         var leaf = Path.GetFileName(value);
@@ -441,7 +474,7 @@ public static class AppPaths
             {
                 if (File.Exists(candidate) || Directory.Exists(candidate))
                 {
-                    return candidate;
+                    return Absolute(candidate);
                 }
             }
             catch
