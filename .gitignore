@@ -86,6 +86,9 @@ temp/*
 # one-file setup. Everything else in temp\ stays local.
 !temp/build-launcher.ps1
 !temp/Publish-Panel.ps1
+# build-portable.ps1 decides exactly what ships to a customer, including the
+# credential/state exclusion list - it has to be versioned alongside it.
+!temp/build-portable.ps1
 
 # Local backups and probes
 _archive/

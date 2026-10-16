@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     DeveloperXPanel-Setup.exe
@@ -28,7 +28,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AssemblyName>DeveloperXPanel-Setup</AssemblyName>
     <RootNamespace>LaunchPanel</RootNamespace>
-    <Version>1.1.2</Version>
+    <Version>1.1.3</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DebugType>none</DebugType>
@@ -63,3 +63,4 @@
   </Target>
 
 </Project>
+

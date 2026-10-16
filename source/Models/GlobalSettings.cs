@@ -147,6 +147,22 @@ public sealed class ToolSettings
     public string ToolWorkingDirectory { get; set; } = "";
 
     /// <summary>
+    /// A shallow copy with the four path fields written back in portable form,
+    /// for saving. The in-memory object keeps the resolved absolutes because
+    /// that is what the child process needs; only this copy reaches
+    /// tool-settings.json, so the file never pins the install to one folder.
+    /// </summary>
+    internal ToolSettings Portable()
+    {
+        var copy = (ToolSettings)MemberwiseClone();
+        copy.PythonExePath = AppPaths.MakePortable(PythonExePath);
+        copy.CreateScriptPath = AppPaths.MakePortable(CreateScriptPath);
+        copy.LoginScriptPath = AppPaths.MakePortable(LoginScriptPath);
+        copy.ToolWorkingDirectory = AppPaths.MakePortable(ToolWorkingDirectory);
+        return copy;
+    }
+
+    /// <summary>
     /// Shell-style argument template substituted with global settings at runtime.
     /// Placeholders:
     ///   <c>{count}</c>       - count from the Create tab,

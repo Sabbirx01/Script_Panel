@@ -468,6 +468,20 @@ public static class AppPaths
             tries.Add(Path.Combine(ToolsRoot, leaf));
         }
 
+        // A path saved while the install lived somewhere else still names the
+        // file somewhere under ...\tools\ - so retry the part that follows the
+        // last "tools" segment. Without this only flat layouts recovered: a
+        // stale tools\zai\Zcreatev2.py was repaired, while
+        // tools\accio\source\create.py was not (checked with a probe calling
+        // this method: repairs=True for zai, False for accio), because the
+        // tries above only ever look for the bare leaf directly under
+        // ToolsRoot\<toolId>\ and accio keeps its scripts one folder deeper.
+        var tail = TailAfterTools(value);
+        if (tail.Length > 0)
+        {
+            tries.Add(Path.Combine(ToolsRoot, tail));
+        }
+
         foreach (var candidate in tries)
         {
             try
@@ -484,6 +498,70 @@ public static class AppPaths
         }
 
         return value;                           // nothing matched: leave it alone
+    }
+
+    /// <summary>
+    /// The part of <paramref name="path"/> that follows its last "tools" folder,
+    /// for example <c>accio\source\create.py</c>. Empty when there is no such
+    /// segment or nothing comes after it.
+    /// </summary>
+    private static string TailAfterTools(string path)
+    {
+        var parts = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+        int last = -1;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (string.Equals(parts[i], "tools", StringComparison.OrdinalIgnoreCase))
+            {
+                last = i;
+            }
+        }
+
+        if (last < 0 || last == parts.Length - 1)
+        {
+            return "";
+        }
+
+        return string.Join(Path.DirectorySeparatorChar, parts, last + 1, parts.Length - last - 1);
+    }
+
+    /// <summary>
+    /// The inverse of <see cref="Resolve"/> for storage: a path inside the
+    /// install folder is written back relative to it, anything else is left
+    /// alone.
+    ///
+    /// <para>Resolve() hands the drivers absolute paths, but saving those would
+    /// pin an install to the folder it happened to sit in - the opposite of what
+    /// build-portable.ps1 documents ("written RELATIVE so any drive letter
+    /// works"). So the file keeps the portable form while the running process
+    /// keeps the absolute one.</para>
+    /// </summary>
+    public static string MakePortable(string? path)
+    {
+        var value = (path ?? "").Trim();
+        if (value.Length == 0)
+        {
+            return "";
+        }
+
+        try
+        {
+            var full = Path.GetFullPath(value);
+            var root = Path.GetFullPath(AppFolderRoot)
+                           .TrimEnd(Path.DirectorySeparatorChar, '/') + Path.DirectorySeparatorChar;
+
+            if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                return full[root.Length..];
+            }
+        }
+        catch
+        {
+            // Not a path this can reason about: keep it exactly as it is.
+        }
+
+        return value;
     }
 
     /// <summary>

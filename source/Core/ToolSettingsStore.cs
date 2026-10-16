@@ -35,11 +35,37 @@ public static class ToolSettingsStore
         {
             return;
         }
+        // A bundle once shipped accio with blank paths, so a fresh install had no
+        // accio script at all and the tool could not run even though
+        // tools\accio\source\create.py was sitting in the same folder. Filling
+        // the blanks here also repairs the installs that already have the blank
+        // value saved: their data\tool-settings.json is carried across every
+        // re-install, so a fix in the bundle alone would never reach them.
+        var builtIn = BuiltInPaths(toolId);
+        if (string.IsNullOrWhiteSpace(s.CreateScriptPath)) s.CreateScriptPath = builtIn.Create;
+        if (string.IsNullOrWhiteSpace(s.LoginScriptPath)) s.LoginScriptPath = builtIn.Login;
+        if (string.IsNullOrWhiteSpace(s.ToolWorkingDirectory)) s.ToolWorkingDirectory = builtIn.Work;
+
         s.PythonExePath = AppPaths.ResolvePython(s.PythonExePath);
         s.CreateScriptPath = AppPaths.Resolve(s.CreateScriptPath, toolId);
         s.LoginScriptPath = AppPaths.Resolve(s.LoginScriptPath, toolId);
         s.ToolWorkingDirectory = AppPaths.Resolve(s.ToolWorkingDirectory, toolId);
     }
+
+    /// <summary>
+    /// Where each tool's scripts live inside a bundle, used only when
+    /// tool-settings.json holds no path at all. Keep in step with the relative
+    /// entries build-portable.ps1 writes.
+    /// </summary>
+    private static (string Create, string Login, string Work) BuiltInPaths(string toolId) =>
+        (toolId ?? "").ToLowerInvariant() switch
+        {
+            "zai" => (@"tools\zai\Zcreatev2.py", @"tools\zai\Zloginv2.py", @"tools\zai"),
+            "devin" => (@"tools\devin\devin_create.py", @"tools\devin\devin_login.py", @"tools\devin"),
+            "tool4" => (@"tools\minimax\minimax_create.py", @"tools\minimax\minimax_login.py", @"tools\minimax"),
+            "accio" => (@"tools\accio\source\create.py", @"tools\accio\source\login.py", @"tools\accio\source"),
+            _ => ("", "", "")
+        };
 
     /// <summary>Always returns a usable object - never null.</summary>
     public static ToolSettings For(string toolId)
@@ -57,7 +83,20 @@ public static class ToolSettingsStore
     public static void Save(string toolId, ToolSettings settings)
     {
         _map[toolId] = settings;
-        Json.Save(AppPaths.ToolSettings, _map);
+
+        // Write the portable form. The in-memory map holds paths already
+        // resolved to absolutes (that is what the drivers hand to Python), and
+        // saving those would pin the install to whichever folder it happened to
+        // sit in - the opposite of what the portable bundle promises. Only this
+        // copy is serialised; the live objects are untouched.
+        var onDisk = _map
+            .Where(pair => pair.Value is not null)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Portable(),
+                StringComparer.OrdinalIgnoreCase);
+
+        Json.Save(AppPaths.ToolSettings, onDisk);
     }
 
     /// <summary>
