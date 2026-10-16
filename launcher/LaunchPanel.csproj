@@ -24,6 +24,11 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <!-- ZipFile.OpenRead is used by the unpacker. Force the framework
+         compression assembly to extract beside the single-file host so it is
+         available on customer PCs even when the host cannot load bundled
+         managed assemblies directly. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AssemblyName>DeveloperXPanel-Setup</AssemblyName>
