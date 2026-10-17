@@ -87,6 +87,66 @@ internal static class UpdateService
         [JsonPropertyName("digest")] public string? Digest { get; set; }
     }
 
+    /// <summary>What both feeds boil down to, so the rest of the check is shared.</summary>
+    private sealed class FeedInfo
+    {
+        public string Version { get; set; } = "";
+        public string Published { get; set; } = "";
+        public string Notes { get; set; } = "";
+        public string PackageUrl { get; set; } = "";
+        public string PackageSha256 { get; set; } = "";
+        public long Size { get; set; }
+        public string HashUrl { get; set; } = "";
+        public string Signature { get; set; } = "";
+    }
+
+    /// <summary>Shape of the small update.json published next to the download page.</summary>
+    private sealed class StaticFeed
+    {
+        [JsonPropertyName("version")] public string Version { get; set; } = "";
+        [JsonPropertyName("published")] public string Published { get; set; } = "";
+        [JsonPropertyName("notes")] public string Notes { get; set; } = "";
+        [JsonPropertyName("packageUrl")] public string PackageUrl { get; set; } = "";
+        [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
+        [JsonPropertyName("size")] public long Size { get; set; }
+    }
+
+    /// <summary>
+    /// CDN-hosted feed written on every release. It carries the same facts the
+    /// GitHub API would, but has no per-IP request cap.
+    /// </summary>
+    private const string StaticFeedUrl = "https://sabbirx01.github.io/Script_Panel/update.json";
+
+    /// <summary>Reads the static feed; null means "not there, use the GitHub API".</summary>
+    private static async Task<FeedInfo?> TryStaticFeedAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var response = await Http.GetAsync(StaticFeedUrl, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var feed = System.Text.Json.JsonSerializer.Deserialize<StaticFeed>(
+                await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false), Json.Options);
+
+            if (feed is null || string.IsNullOrWhiteSpace(feed.Version) || string.IsNullOrWhiteSpace(feed.PackageUrl))
+                return null;
+
+            return new FeedInfo
+            {
+                Version = feed.Version.TrimStart('v', 'V'),
+                Published = feed.Published,
+                Notes = feed.Notes,
+                PackageUrl = feed.PackageUrl,
+                PackageSha256 = feed.Sha256,
+                Size = feed.Size
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public sealed class CheckResult
     {
         public bool Ok { get; init; }
@@ -204,32 +264,63 @@ internal static class UpdateService
             Manifest manifest;
             if (IsGitHubFeed)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiUrl);
-                request.Headers.UserAgent.ParseAdd("DeveloperXBulkAccPanel/1.1");
-                request.Headers.Accept.ParseAdd("application/vnd.github+json");
-                using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                var release = System.Text.Json.JsonSerializer.Deserialize<GitHubRelease>(
-                    await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false), Json.Options)
-                    ?? new GitHubRelease();
-                if (release.Draft || release.Prerelease || string.IsNullOrWhiteSpace(release.TagName))
-                    return new CheckResult { Ok = false, CurrentVersion = current, Error = "No stable GitHub release is available." };
+                // The static feed on GitHub Pages comes first. api.github.com is
+                // limited to 60 unauthenticated requests per hour per IP, so a few
+                // clicks of CHECK NOW - or several customers behind one office
+                // NAT - exhausted it and every check answered
+                // "403 (rate limit exceeded)". Pages is a CDN and has no such cap.
+                var feed = await TryStaticFeedAsync(ct).ConfigureAwait(false);
 
-                var package = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-                var signature = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase));
-                var hashFile = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase));
-                if (package is null)
-                    return new CheckResult { Ok = false, CurrentVersion = current, Error = "The GitHub release has no update package." };
+                if (feed is null)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiUrl);
+                    request.Headers.UserAgent.ParseAdd("DeveloperXBulkAccPanel/1.1");
+                    request.Headers.Accept.ParseAdd("application/vnd.github+json");
+                    using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
+
+                    if ((int)response.StatusCode == 429 || (int)response.StatusCode == 403)
+                        return new CheckResult
+                        {
+                            Ok = false, CurrentVersion = current,
+                            Error = "GitHub is rate-limiting update checks from this connection. "
+                                  + "Try again in a few minutes, or download the latest Setup from the download page."
+                        };
+
+                    response.EnsureSuccessStatusCode();
+                    var release = System.Text.Json.JsonSerializer.Deserialize<GitHubRelease>(
+                        await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false), Json.Options)
+                        ?? new GitHubRelease();
+                    if (release.Draft || release.Prerelease || string.IsNullOrWhiteSpace(release.TagName))
+                        return new CheckResult { Ok = false, CurrentVersion = current, Error = "No stable GitHub release is available." };
+
+                    var package = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+                    var signature = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase));
+                    var hashFile = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase));
+                    if (package is null)
+                        return new CheckResult { Ok = false, CurrentVersion = current, Error = "The GitHub release has no update package." };
+
+                    feed = new FeedInfo
+                    {
+                        Version = release.TagName.TrimStart('v', 'V'),
+                        Published = release.PublishedAt,
+                        Notes = string.IsNullOrWhiteSpace(release.Body) ? release.Name : release.Body,
+                        PackageUrl = package.DownloadUrl,
+                        PackageSha256 = (package.Digest ?? "").Replace("sha256:", "", StringComparison.OrdinalIgnoreCase),
+                        Size = package.Size,
+                        HashUrl = hashFile?.DownloadUrl ?? "",
+                        Signature = signature?.DownloadUrl ?? ""
+                    };
+                }
 
                 manifest = new Manifest
                 {
-                    Version = release.TagName.TrimStart('v', 'V'),
-                    Published = release.PublishedAt,
-                    Notes = string.IsNullOrWhiteSpace(release.Body) ? release.Name : release.Body,
-                    PackageSha256 = (package.Digest ?? "").Replace("sha256:", "", StringComparison.OrdinalIgnoreCase),
-                    PackageUrl = package.DownloadUrl,
-                    HashUrl = hashFile?.DownloadUrl ?? "",
-                    Signature = signature?.DownloadUrl ?? ""
+                    Version = feed.Version,
+                    Published = feed.Published,
+                    Notes = feed.Notes,
+                    PackageSha256 = feed.PackageSha256,
+                    PackageUrl = feed.PackageUrl,
+                    HashUrl = feed.HashUrl,
+                    Signature = feed.Signature
                 };
 
                 var installed = ParseVersion(current);
@@ -240,7 +331,7 @@ internal static class UpdateService
                 var packageFile = new ManifestFile
                 {
                     Path = "DeveloperXBulkAccPanel.exe",
-                    Size = package.Size,
+                    Size = feed.Size,
                     Sha256 = manifest.PackageSha256,
                     PackageUrl = manifest.PackageUrl,
                     HashUrl = manifest.HashUrl,
@@ -249,7 +340,7 @@ internal static class UpdateService
                 return new CheckResult
                 {
                     Ok = true, CurrentVersion = current, AvailableVersion = manifest.Version,
-                    Notes = manifest.Notes, Changed = new[] { packageFile }, ChangedBytes = package.Size
+                    Notes = manifest.Notes, Changed = new[] { packageFile }, ChangedBytes = feed.Size
                 };
             }
 
