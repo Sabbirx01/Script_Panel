@@ -1,11 +1,9 @@
 {
-  "version": "1.1.9",
-  "tag": "v1.1.9",
-  "published": "2026-10-17T07:20:00Z",
-  "notes": "Update checks now use this CDN feed instead of the rate-limited GitHub API (no more 403 rate limit exceeded). Title bar shows the real build version. Includes the Global Settings save fix.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v1.1.9/DeveloperXBulkAccPanel-v1.1.9.zip",
-  "sha256": "fa4bb5617c5d8306df5b45779d0bef5bb84a8e378854bb002c6eedb873916ece",
-  "size": 90550207,
-  "setupUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v1.1.9/DeveloperXPanel-Setup.exe",
-  "setupSha256": "e51ade22628d4ede97552e4a4a207c23ab3543e0ab7ab071e9da492a279a27b1"
+  "version": "1.2.0",
+  "tag": "v1.2.0",
+  "published": "2026-10-17T08:05:00Z",
+  "notes": "Silent auto-update: the panel downloads, verifies and installs new builds on its own, with no CHECK NOW or INSTALL UPDATE click. Also fixes mouse-wheel scrolling being far too fast, and shows the real build version in the title bar.",
+  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v1.2.0/DeveloperXBulkAccPanel-v1.2.0.zip",
+  "sha256": "ef0a0fe9746389a717022533ba35853b109948a657e8f484f119d830bde97635",
+  "size": 90551567
 }

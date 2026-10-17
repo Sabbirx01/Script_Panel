@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Media3D;
 
 namespace AISuitePanel;
 
@@ -10,6 +12,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // Long settings pages used to jump from top to bottom in one flick:
+        // many mice and precision touchpads send several notches per physical
+        // detent, and each notch scrolled a full WPF step. One notch per 70 ms,
+        // about a tenth of the viewport each, keeps it predictable.
+        PreviewMouseWheel += OnWindowPreviewMouseWheel;
 
         Nav.Renderer = Render;
         LicenseService.Changed += UpdateStatusPill;
@@ -41,6 +49,53 @@ public partial class MainWindow : Window
         view.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
         slide.BeginAnimation(TranslateTransform.YProperty,
             new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(320)) { EasingFunction = ease });
+    }
+
+    // ---------------------------------------------------------------- scrolling
+
+    private static readonly Dictionary<ScrollViewer, DateTime> _wheelAt = new();
+
+    private void OnWindowPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var sv = FindScrollViewer(e.OriginalSource as DependencyObject);
+        if (sv is null) return;
+
+        var now = DateTime.UtcNow;
+        if (_wheelAt.TryGetValue(sv, out var last) && (now - last).TotalMilliseconds < 70)
+        {
+            // Extra notches from a single physical detent: drop them.
+            e.Handled = true;
+            return;
+        }
+        _wheelAt[sv] = now;
+
+        if (sv.CanContentScroll)
+        {
+            if (e.Delta > 0) sv.LineUp(); else sv.LineDown();
+            e.Handled = true;
+            return;
+        }
+
+        var step = Math.Clamp(sv.ViewportHeight * 0.10, 32, 110);
+        var target = sv.VerticalOffset - (e.Delta > 0 ? step : -step);
+        target = Math.Clamp(target, 0, Math.Max(0, sv.ScrollableHeight));
+
+        // At either end, leave the event alone so the outer page scrolls.
+        if (Math.Abs(target - sv.VerticalOffset) < 0.5) return;
+
+        sv.ScrollToVerticalOffset(target);
+        e.Handled = true;
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject? node)
+    {
+        while (node is not null && node is not ScrollViewer)
+        {
+            node = node is Visual or Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+        return node as ScrollViewer;
     }
 
     // ------------------------------------------------------------ status pill

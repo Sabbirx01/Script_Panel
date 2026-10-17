@@ -89,7 +89,10 @@ public partial class App : Application
             Current.Show();
         }
 
-        _ = UpdateService.CheckOnStartupAsync();
+        // Silent, click-free updates: download, verify and swap in the new build
+        // in the background; it takes effect on the next launch. The manual
+        // CHECK NOW / INSTALL UPDATE buttons stay as the fallback.
+        _ = UpdateService.AutoInstallAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)

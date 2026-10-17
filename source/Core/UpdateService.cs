@@ -245,6 +245,63 @@ internal static class UpdateService
         catch { }
     }
 
+    /// <summary>Raised after a click-free update has been swapped in.</summary>
+    public static event Action<string>? AutoInstalled;
+
+    private static bool _autoRunning;
+
+    /// <summary>
+    /// The click-free path: check the feed, download the package, verify its
+    /// SHA-256, swap the panel exe in and let the new build start next time.
+    /// This is the Meta behaviour the operator asked for - the customer never
+    /// presses CHECK NOW or INSTALL UPDATE.
+    ///
+    /// The running process keeps executing the old image (Windows lets a running
+    /// exe be renamed but not overwritten), which is exactly why the swap is safe
+    /// here: nothing is replaced until the download has been hash-verified, and
+    /// the previous exe stays in update-backup for RESTORE PREVIOUS.
+    /// </summary>
+    public static async Task AutoInstallAsync(CancellationToken ct = default)
+    {
+        if (_autoRunning) return;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
+            if (!LicenseService.IsActivated || !Configured) return;
+
+            _autoRunning = true;
+            var result = await CheckAsync(ct).ConfigureAwait(false);
+            StartupResult = result;
+
+            if (!result.Ok || result.UpToDate)
+            {
+                StartupChecked?.Invoke(result);
+                return;
+            }
+
+            var install = await InstallAsync(result.Changed, result.AvailableVersion, null, ct).ConfigureAwait(false);
+            if (!install.Ok)
+            {
+                // Leave the banner up so the manual button is still there.
+                Log.Warn("", "Automatic update failed: " + install.Error);
+                StartupChecked?.Invoke(result);
+                return;
+            }
+
+            Log.Success("", $"Update {result.AvailableVersion} installed automatically - it starts on the next launch.");
+            AutoInstalled?.Invoke(result.AvailableVersion);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log.Warn("", "Automatic update failed: " + ex.Message);
+        }
+        finally
+        {
+            _autoRunning = false;
+        }
+    }
+
     private static string StagingDir => Path.Combine(AppPaths.Root, "update-staging");
     private static string BackupDir =>
         Path.Combine(AppPaths.Root, "update-backup", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
