@@ -23,8 +23,21 @@ public static class Branding
     public const string PageName = "Automation Service";
     public const string PageUpper = "AUTOMATION SERVICE";
 
-    /// <summary>Shown in the little pill next to the brand in the title bar.</summary>
-    public const string Version = "V1.1";
+    /// <summary>
+    /// Shown in the little pill next to the brand in the title bar.
+    ///
+    /// Read from the assembly, not a literal: the literal said "V1.1" on every
+    /// build, so a 1.1.7 install still advertised V1.1 in its own title bar and
+    /// nobody could tell two builds apart by looking at the window.
+    /// </summary>
+    public static string Version
+    {
+        get
+        {
+            var v = typeof(Branding).Assembly.GetName().Version;
+            return v is null ? "V0.0" : "V" + v.ToString(3);
+        }
+    }
 
     /// <summary>Window title (= what UI Automation and the taskbar show).</summary>
     public const string WindowTitle = "Developer X Bulk Acc Panel";
