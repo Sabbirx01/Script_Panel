@@ -16,12 +16,21 @@ public static class SettingsStore
 
     public static void Load() => _current = Json.Load(AppPaths.Settings, () => new GlobalSettings());
 
-    public static void Save(GlobalSettings settings)
+    /// <summary>Last write failure, or "" when the settings reached disk.</summary>
+    public static string LastSaveError => Json.LastError;
+
+    /// <summary>
+    /// Persists the settings. Returns false when the file could not be written, so
+    /// the Save button can say so instead of reporting success for a write that
+    /// never happened.
+    /// </summary>
+    public static bool Save(GlobalSettings settings)
     {
         settings.UpdatedAt = DateTime.Now;
         _current = settings;
-        Json.Save(AppPaths.Settings, settings);
+        var ok = Json.Save(AppPaths.Settings, settings);
         Changed?.Invoke();
+        return ok;
     }
 
     /// <summary>

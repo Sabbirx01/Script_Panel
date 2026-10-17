@@ -13,9 +13,9 @@
     <Product>Developer X Bulk Acc Panel</Product>
     <Company>Developer X</Company>
     <Description>Developer X Bulk Acc Panel - activation, dashboard and per-tool panels.</Description>
-    <Version>1.1.3</Version>
-    <AssemblyVersion>1.1.3.0</AssemblyVersion>
-    <FileVersion>1.1.3.0</FileVersion>
+    <Version>1.1.7</Version>
+    <AssemblyVersion>1.1.7.0</AssemblyVersion>
+    <FileVersion>1.1.7.0</FileVersion>
     <Copyright>Copyright (c) 2026 Developer X</Copyright>
 
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

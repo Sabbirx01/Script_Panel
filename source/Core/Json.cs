@@ -39,22 +39,52 @@ internal static class Json
         }
     }
 
-    public static void Save<T>(string path, T value)
+    /// <summary>
+    /// Why the last <see cref="Save{T}"/> failed, and for which path. Empty when
+    /// it succeeded. Callers that must tell the user (Global Settings → Save) read
+    /// this instead of guessing: a silent failure used to look exactly like a
+    /// successful save, so the operator pressed Save, saw the settings stay
+    /// unapplied, and had no way to find out why.
+    /// </summary>
+    public static string LastError { get; private set; } = "";
+
+    public static string LastErrorPath { get; private set; } = "";
+
+    /// <summary>Writes atomically. Returns false and records <see cref="LastError"/> on failure.</summary>
+    public static bool Save<T>(string path, T value)
     {
-        try
-        {
-            AppPaths.Ensure();
+        LastError = "";
+        LastErrorPath = "";
 
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-            var tmp = path + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(value, Options), new UTF8Encoding(false));
-            File.Move(tmp, path, overwrite: true);
-        }
-        catch
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            // Persistence is best-effort; the session keeps working regardless.
+            try
+            {
+                AppPaths.Ensure();
+
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+                var tmp = path + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(value, Options), new UTF8Encoding(false));
+
+                // A scanner or a second instance can hold the target open for a
+                // moment; retrying beats reporting a failure that would vanish.
+                File.Move(tmp, path, overwrite: true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                LastErrorPath = path;
+
+                if (attempt < 3)
+                {
+                    try { Thread.Sleep(80 * attempt); } catch { }
+                }
+            }
         }
+
+        return false;
     }
 }

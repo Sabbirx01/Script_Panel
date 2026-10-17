@@ -592,24 +592,44 @@ public partial class GlobalSettingsView : UserControl
 
         var issues = SettingsStore.Validate(settings);
 
-        if (issues.Count > 0)
+        // Problems are shown as warnings, not used as a veto. Refusing the whole
+        // save because one method was half-filled made Save look broken: nothing
+        // was written, no error was shown, and Back still said "unsaved changes".
+        IssueList.ItemsSource = issues;
+        IssuePanel.Visibility = issues.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var saved = SettingsStore.Save(settings);
+
+        if (!saved)
         {
-            IssueList.ItemsSource = issues;
-            IssuePanel.Visibility = Visibility.Visible;
-            Log.Warn("", $"Global settings not saved - {issues.Count} problem(s).");
+            // Nothing reached disk, so the edits really are still unsaved.
+            _dirty = true;
+            var why = SettingsStore.LastSaveError.Length > 0
+                ? SettingsStore.LastSaveError
+                : "the settings file could not be written.";
+            ShowToast("NOT SAVED — " + why);
+            Log.Error("", $"Global mail settings could not be written to {AppPaths.Settings}: {why}");
             return;
         }
 
-        IssuePanel.Visibility = Visibility.Collapsed;
-        SettingsStore.Save(settings);
-
-        // Show the tidied domain back to the user.
+        // Show the tidied domain back to the user. This assignment raises
+        // TextChanged, so the dirty flag is cleared AFTER it - otherwise a
+        // successful save still left Back saying "unsaved changes".
         DomainBox.Text = settings.CustomDomain.Domain;
 
         _dirty = false;
         RefreshHints();
-        ShowToast("Saved. Tool panels can use these methods right away.");
-        Log.Success("", "Global mail settings saved.");
+
+        if (issues.Count > 0)
+        {
+            ShowToast($"Saved with {issues.Count} warning(s) — see the list above.");
+            Log.Warn("", $"Global mail settings saved with {issues.Count} warning(s).");
+        }
+        else
+        {
+            ShowToast("Saved. Tool panels can use these methods right away.");
+            Log.Success("", "Global mail settings saved.");
+        }
     }
 
     private void OnBack(object sender, RoutedEventArgs e)
