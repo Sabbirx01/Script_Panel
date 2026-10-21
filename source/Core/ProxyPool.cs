@@ -46,12 +46,32 @@ public static class ProxyPool
         @"^(?:(?<user>[^:@\s]+):(?<pass>[^@\s]+)@)?(?<host>(?:\d{1,3}\.){3}\d{1,3}):(?<port>\d{1,5})$",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// The four colon-separated fields vendors actually paste:
+    /// <c>host:port:username:password</c>. Proxies.com / liveproxies and the
+    /// other rotating-IP sellers all export this shape, and the old regex only
+    /// understood <c>user:pass@host:port</c> over an IPv4 literal — so a
+    /// hostname-based authenticated proxy matched nothing and was dropped from
+    /// the list without a word, which looked like "the panel ignored my list".
+    /// </summary>
+    private static readonly Regex VendorShape = new(
+        @"^(?<host>[^:@\s/]+):(?<port>\d{1,5}):(?<user>[^:@\s]+):(?<pass>[^@\s]+)$",
+        RegexOptions.Compiled);
+
     // ------------------------------------------------------------------ parsing
 
     /// <summary>
     /// One line to <c>scheme://[user:pass@]host:port</c>, or "" when the line is
     /// not a proxy at all.  Everything downstream (file, tester, Playwright)
     /// works from this single shape.
+    ///
+    /// <para>Accepted inputs, because proxy lists are pasted from wherever the
+    /// operator bought them:
+    /// <c>host:port</c> · <c>user:pass@host:port</c> ·
+    /// <c>host:port:user:pass</c> · any of those with a <c>http://</c> /
+    /// <c>socks5://</c> scheme and/or a trailing path. The host may be a
+    /// hostname or an IPv4 literal — vendors overwhelmingly use hostnames, and
+    /// those used to be rejected outright.</para>
     /// </summary>
     public static string Normalize(string? line)
     {
@@ -68,8 +88,55 @@ public static class ProxyPool
             text = text[(at + 3)..];
         }
 
+        // A pasted URL often carries a path; nothing here ever uses one.
+        var slash = text.IndexOf('/');
+        if (slash >= 0) text = text[..slash];
+        if (text.Length == 0) return "";
+
+        string user = "", pass = "";
+
+        // 1) host:port:user:pass  — the vendor export shape.
+        var vendor = VendorShape.Match(text);
+        if (vendor.Success)
+        {
+            text = vendor.Groups["host"].Value + ":" + vendor.Groups["port"].Value;
+            user = vendor.Groups["user"].Value;
+            pass = vendor.Groups["pass"].Value;
+        }
+        else
+        {
+            // 2) [user:pass@]host:port — the file's documented shape.
+            var at2 = text.LastIndexOf('@');
+            if (at2 > 0)
+            {
+                var credPart = text[..at2];
+                text = text[(at2 + 1)..];
+                var credColon = credPart.IndexOf(':');
+                if (credColon <= 0) return "";
+                user = credPart[..credColon];
+                pass = credPart[(credColon + 1)..];
+            }
+        }
+
         var m = Shape.Match(text);
-        if (!m.Success) return "";
+        if (!m.Success)
+        {
+            // 3) hostname:port — the regex above is IPv4-only on purpose (it is
+            // what rejects "999.1.1.1"), so hostnames take the general path.
+            var colon = text.LastIndexOf(':');
+            if (colon <= 0) return "";
+            var hostPart = text[..colon];
+            var portPart = text[(colon + 1)..];
+            if (!int.TryParse(portPart, out var hostPort) || hostPort < 1 || hostPort > 65535)
+                return "";
+            if (!IsValidHost(hostPart)) return "";
+            // No credentials means NO "@" at all — "http://:@host:port" is a
+            // different string and some clients read the empty user as an
+            // anonymous login attempt instead of simply not authenticating.
+            var hostCred = user.Length > 0 ? $"{user}:{pass}@" : "";
+            return $"{scheme}://{hostCred}{hostPart}:{hostPort}";
+        }
+
         if (!int.TryParse(m.Groups["port"].Value, out var port) || port < 1 || port > 65535)
             return "";
 
@@ -78,11 +145,40 @@ public static class ProxyPool
         foreach (var octet in m.Groups["host"].Value.Split('.'))
             if (!byte.TryParse(octet, out _)) return "";
 
-        var user = m.Groups["user"].Value;
-        var pass = m.Groups["pass"].Value;
-        var host = m.Groups["host"].Value;
         var cred = user.Length > 0 ? $"{user}:{pass}@" : "";
-        return $"{scheme}://{cred}{host}:{port}";
+        return $"{scheme}://{cred}{m.Groups["host"].Value}:{port}";
+    }
+
+    /// <summary>
+    /// A usable host: an IPv4 literal with real octets, or a DNS name whose
+    /// labels hold only letters, digits, hyphens and underscores.
+    /// </summary>
+    private static bool IsValidHost(string host)
+    {
+        if (host.Length is 0 or > 253) return false;
+
+        if (host.Contains('.'))
+        {
+            // Four dotted octets: validated by the caller for the literal form,
+            // so reject here rather than pass "999.1.1.1" through.
+            var parts = host.Split('.');
+            if (parts.Length == 4)
+            {
+                foreach (var part in parts)
+                    if (!byte.TryParse(part, out _)) return false;
+                return true;
+            }
+        }
+
+        foreach (var label in host.Split('.'))
+        {
+            if (label.Length is 0 or > 63) return false;
+            if (label[0] == '-' || label[^1] == '-') return false;
+            foreach (var c in label)
+                if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '_')
+                    return false;
+        }
+        return true;
     }
 
     /// <summary>The list as stored, cleaned and de-duplicated (order preserved).</summary>
