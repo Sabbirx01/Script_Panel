@@ -111,6 +111,20 @@ public sealed class TempMailService
         {
             Timeout = TimeSpan.FromSeconds(15)
         };
+
+        // A browser User-Agent is NOT optional here. Several of these services sit
+        // behind Cloudflare, which answers a UA-less request with a bare 403 — and
+        // a plain HttpClient sends no UA at all. temp-mail.org handed out a working
+        // mailbox from Python and returned nothing from this client, which then fell
+        // through to the .invalid placeholder and signed the tool up with a dead
+        // address. Meta_EXE sends the same headers on every call.
+        _http.DefaultRequestHeaders.TryAddWithoutValidation(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Accept", "application/json, text/plain, */*");
+
         if (!string.IsNullOrEmpty(_apiKey))
             _http.DefaultRequestHeaders.Add("Authorization", "Bearer " + _apiKey);
     }
@@ -368,7 +382,17 @@ public sealed class TempMailService
         string? domain = dj is null
             ? null
             : PickDomain(dj, "hydra:member");
-        domain ??= _provider.Name == "duckmail" ? "niceground.shop" : "uberip.com";
+        if (string.IsNullOrWhiteSpace(domain))
+        {
+            // No guessing. The old fallback was "uberip.com", which mail.tm
+            // stopped accepting — every attempt then failed with a 422 that named
+            // a domain this code had invented, which is a far more confusing
+            // report than "the domain list was unreachable".
+            Log.Warn("tempmail",
+                $"{_provider.Name}: could not read the domain list from {host} — " +
+                "the account was not created.");
+            return null;
+        }
 
         var address = "mp" + Rand(9) + "@" + domain;
         var password = "Mp!" + Rand(10) + "7x";
@@ -411,10 +435,19 @@ public sealed class TempMailService
         try
         {
             using var resp = await _http.GetAsync(url).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                Log.Warn("tempmail", $"{_provider.Name}: GET {url} -> HTTP {(int)resp.StatusCode}");
+                return null;
+            }
             return await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Log.Warn("tempmail",
+                $"{_provider.Name}: GET {url} threw {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -434,10 +467,27 @@ public sealed class TempMailService
             foreach (var (name, value) in headers)
                 req.Headers.TryAddWithoutValidation(name, value);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                // Say what came back. A swallowed 403 is how a service looked
+                // broken for a day: Cloudflare answers a UA-less request with an
+                // empty 403, and nothing in the log said so.
+                var snippet = (await resp.Content.ReadAsStringAsync().ConfigureAwait(false))
+                    .Replace("\n", " ").Trim();
+                if (snippet.Length > 140) snippet = snippet[..140];
+                Log.Warn("tempmail",
+                    $"{_provider.Name}: POST {url} -> HTTP {(int)resp.StatusCode}" +
+                    (snippet.Length > 0 ? $" — {snippet}" : " (empty body)"));
+                return null;
+            }
             return await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Log.Warn("tempmail",
+                $"{_provider.Name}: POST {url} threw {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>First non-empty string among <paramref name="keys"/> in a JSON body.</summary>

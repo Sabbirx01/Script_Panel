@@ -29,11 +29,14 @@ public static class MailRouter
         Array.ConvertAll(TempMailProviderCatalog.All, p => p.Display);
 
     /// <summary>
-    /// Placeholder address space, used ONLY when the chosen service is
-    /// unreachable. Every real service now mints a real address through
-    /// <see cref="TempMailService"/>; this list is the last-ditch offline
-    /// placeholder so the panel pipeline still completes a run, and it stays in
-    /// the reserved <c>.invalid</c> TLD so nothing can reach a real mailbox.
+    /// Never used for a real mailbox.
+    ///
+    /// <para>This list existed to back a "demoN.invalid" placeholder that the
+    /// panel issued when a temp-mail service could not be reached. That path is
+    /// gone — a placeholder address made the tool sign up with an address no
+    /// mailbox existed behind, then wait out the whole OTP timeout for mail that
+    /// could never arrive. Kept only so an older build's settings still parse;
+    /// nothing routes to it.</para>
     /// </summary>
     private static readonly string[] ServiceDomains =
     {
@@ -116,16 +119,20 @@ public static class MailRouter
         catch (Exception ex)
         {
             Log.Warn("tempmail",
-                $"{provider.Name} generate failed ({ex.GetType().Name}: {ex.Message}) " +
-                "— falling back to offline address.");
+                $"{provider.Name} generate failed ({ex.GetType().Name}: {ex.Message}).");
         }
 
-        // Offline / API-down fallback: same placeholder shape as before but
-        // flagged so the panel can show "offline" instead of "real".
-        var index = Math.Clamp(cfg.ServiceIndex, 1, ServiceDomains.Length);
-        var local2 = "box" + Guid.NewGuid().ToString("N")[..10];
-        return new RoutedAddress($"{local2}@{ServiceDomains[index - 1]}",
-            $"{provider.Name} (offline)");
+        // No placeholder address. The panel used to hand out a
+        // "box…@demoN.invalid" address here so a dry run could still finish, and
+        // it was never clearly a placeholder: a real signup started, filled the
+        // address into the site, and then sat waiting 150 s for an OTP that could
+        // never arrive because the mailbox does not exist. A failed service is now
+        // a skipped account with the reason on screen, which is both honest and
+        // faster. Callers already treat a null address that way.
+        Log.Warn("tempmail",
+            $"{provider.Name} could not issue a mailbox — account skipped. " +
+            "Try a different service in Global Settings → Method 1.");
+        return null;
     }
 
     /// <summary>
