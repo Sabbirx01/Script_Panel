@@ -45,7 +45,17 @@ public static class SettingsStore
 
     // ------------------------------------------------------------- readiness
 
-    public static bool TempMailUsable => _current.TempMail.ServiceIndex is >= 1 and <= 5;
+    /// <summary>
+    /// Method 1 is usable whenever the chosen index is one the catalog actually
+    /// holds. The bound used to be a hard-coded <c>&lt;= 5</c>, left over from
+    /// the original five services — which silently greyed out the "Temp Mail"
+    /// radio on the Create tab for every service added since, so a customer
+    /// could pick a service in Global Settings and then find the mode disabled
+    /// with no hint why. Read the catalog length instead.
+    /// </summary>
+    public static bool TempMailUsable =>
+        _current.TempMail.ServiceIndex >= 1
+        && _current.TempMail.ServiceIndex <= TempMailProviderCatalog.All.Length;
 
     public static bool DottedGmailUsable =>
         _current.DottedGmail.Accounts.Any(a => IsGmail(a.Email));
@@ -127,7 +137,8 @@ public static class SettingsStore
     {
         var issues = new List<string>();
 
-        if (s.TempMail.ServiceIndex is < 1 or > 5)
+        if (s.TempMail.ServiceIndex < 1
+            || s.TempMail.ServiceIndex > TempMailProviderCatalog.All.Length)
             issues.Add("Method 1: pick a built-in temp mail service.");
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

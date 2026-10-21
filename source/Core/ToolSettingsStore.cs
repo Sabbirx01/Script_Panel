@@ -117,6 +117,42 @@ public static class ToolSettingsStore
         Save(toolId, settings);
     }
 
+    // ------------------------------------------------------ per-tool proxy ON
+
+    /// <summary>
+    /// Per-tool "use a proxy" flag for the Create run. <c>true</c> (the default)
+    /// is what the panel always used before the switch was remembered.
+    /// </summary>
+    public static bool IsProxyOn(string toolId) => For(toolId).ProxyOn;
+
+    /// <summary>
+    /// Persists the per-tool proxy switch. No-op when unchanged, so flipping it
+    /// never rewrites the file needlessly — same contract as
+    /// <see cref="SetHeadless"/>.
+    /// </summary>
+    public static void SetProxyOn(string toolId, bool on)
+    {
+        var settings = For(toolId);
+        if (settings.ProxyOn == on) return;
+        settings.ProxyOn = on;
+        Save(toolId, settings);
+    }
+
+    /// <summary>
+    /// Accio-only companion to <see cref="IsProxyOn"/>: the proxy switch used by
+    /// the Login row. Defaults to OFF, which is what that toggle already showed.
+    /// </summary>
+    public static bool IsLoginProxyOn(string toolId) => For(toolId).LoginProxyOn;
+
+    /// <summary>Persists the per-tool Login-row proxy switch.</summary>
+    public static void SetLoginProxyOn(string toolId, bool on)
+    {
+        var settings = For(toolId);
+        if (settings.LoginProxyOn == on) return;
+        settings.LoginProxyOn = on;
+        Save(toolId, settings);
+    }
+
     // ------------------------------------------------------ per-tool login URL
 
     /// <summary>

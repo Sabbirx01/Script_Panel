@@ -16,21 +16,24 @@ public sealed record RoutedAddress(string Address, string SourceRef);
 /// </summary>
 public static class MailRouter
 {
-    /// <summary>Names shown in the Method 1 dropdown (mirrors <see cref="TempMailProviderCatalog.All"/>).</summary>
+    /// <summary>
+    /// Names shown in the Method 1 dropdown.
+    ///
+    /// <para>DERIVED from <see cref="TempMailProviderCatalog.All"/> on purpose.
+    /// These were two hand-written parallel arrays, which is exactly the kind of
+    /// thing that drifts: appending a service to the catalog without a matching
+    /// label shifts every option below it by one and silently repoints every
+    /// saved <c>ServiceIndex</c>. Now they cannot disagree.</para>
+    /// </summary>
     public static readonly string[] ServiceNames =
-    {
-        "Guerrilla Mail (free)",
-        "1secmail.com (free)",
-        "mail.tm (signup required)",
-        "Temp-Mail.io (API key)",
-        "Inboxes.com demo"
-    };
+        Array.ConvertAll(TempMailProviderCatalog.All, p => p.Display);
 
     /// <summary>
-    /// Placeholder address space for the five built-in services. The real
-    /// endpoints are not wired yet (see BLUEPRINT.md, open question 1), so every
-    /// demo address is issued in the reserved <c>.invalid</c> TLD - nothing can
-    /// reach a real mailbox by accident.
+    /// Placeholder address space, used ONLY when the chosen service is
+    /// unreachable. Every real service now mints a real address through
+    /// <see cref="TempMailService"/>; this list is the last-ditch offline
+    /// placeholder so the panel pipeline still completes a run, and it stays in
+    /// the reserved <c>.invalid</c> TLD so nothing can reach a real mailbox.
     /// </summary>
     private static readonly string[] ServiceDomains =
     {
@@ -84,52 +87,30 @@ public static class MailRouter
         var cfg = SettingsStore.Current.TempMail;
         var provider = PickProvider(cfg);
 
-        // For Guerrilla Mail, the API returns a fresh sid_token alongside the
-        // mailbox. Persist it into CustomApiKey so ListMessages / ReadMessage
-        // can hit the same mailbox.
+        // Every service mints its mailbox through the one service object -
+        // Guerrilla used to have its own inline block here, which meant the
+        // other services had no place to hand back the token they issue.
         try
         {
-            if (provider.Name == "guerrilla")
+            var svc = new TempMailService(provider, cfg.CustomApiKey);
+            var fresh = await svc.GenerateMailboxAsync().ConfigureAwait(false);
+            if (fresh is not null)
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-                http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
-                using var rawResp = await http.GetAsync(
-                    provider.EndpointBase + "/ajax.php?f=get_email_address").ConfigureAwait(false);
-                rawResp.EnsureSuccessStatusCode();
-                var body = await rawResp.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                using var doc = System.Text.Json.JsonDocument.Parse(body);
-                var email = doc.RootElement.TryGetProperty("email_addr", out var eEl)
-                    ? eEl.GetString() : null;
-                var sid = doc.RootElement.TryGetProperty("sid_token", out var sEl)
-                    ? sEl.GetString() : null;
-
-                if (!string.IsNullOrWhiteSpace(email) && email.Contains('@'))
+                // Persist the session token (Guerrilla's sid_token, mail.tm's
+                // JWT, tempmail.plus's epin, …) into CustomApiKey, which the
+                // driver already hands to Python as TEMP_MAIL_API_KEY. Without
+                // it the poller cannot read the inbox it was just given, so the
+                // OTP never arrives.
+                var token = svc.LastToken;
+                if (!string.IsNullOrWhiteSpace(token) && token != cfg.CustomApiKey)
                 {
-                    // Persist sid for follow-up ListMessages / ReadMessage calls.
-                    if (!string.IsNullOrWhiteSpace(sid) && sid != cfg.CustomApiKey)
-                    {
-                        cfg.CustomApiKey = sid;
-                        SettingsStore.Save(SettingsStore.Current);
-                    }
-                    var at = email.IndexOf('@');
-                    return new RoutedAddress(
-                        email,
-                        $"{provider.Name} ({email})");
+                    cfg.CustomApiKey = token;
+                    SettingsStore.Save(SettingsStore.Current);
                 }
-            }
-            else
-            {
-                // 1secmail / mail.tm / etc. — go through the service object.
-                var svc = new TempMailService(provider, cfg.CustomApiKey);
-                var fresh = await svc.GenerateMailboxAsync().ConfigureAwait(false);
-                if (fresh is not null)
-                {
-                    var (local, domain) = fresh.Value;
-                    return new RoutedAddress(
-                        $"{local}@{domain}",
-                        $"{provider.Name} ({local}@{domain})");
-                }
+                var (local, domain) = fresh.Value;
+                return new RoutedAddress(
+                    $"{local}@{domain}",
+                    $"{provider.Name} ({local}@{domain})");
             }
         }
         catch (Exception ex)
@@ -148,8 +129,10 @@ public static class MailRouter
     }
 
     /// <summary>
-    /// Resolve the user's <c>ServiceIndex</c> setting (1..5) to the matching
-    /// <see cref="TempMailProvider"/>. Index 0 is reserved for "first available".
+    /// Resolve the user's <c>ServiceIndex</c> setting (1..catalog length) to the
+    /// matching <see cref="TempMailProvider"/>. Out-of-range values clamp to the
+    /// catalog rather than throwing, so a settings file written by a NEWER build
+    /// still opens on an older one instead of crashing the Create tab.
     /// </summary>
     private static TempMailProvider PickProvider(Models.TempMailSettings cfg)
     {

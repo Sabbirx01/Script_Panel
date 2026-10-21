@@ -44,6 +44,9 @@ public partial class AccioPanelView : UserControl
     private bool _running;
     private string _viewerText = "";
     private string _viewerName = "";
+    // Guards the two PROXY switches (Create run + Login row) while their saved
+    // values are written onto them from code when the panel opens.
+    private bool _syncingProxy;
 
     private FileSystemWatcher? _watcherAlice;
     private FileSystemWatcher? _watcherAccts;
@@ -91,7 +94,12 @@ public partial class AccioPanelView : UserControl
 
         // Set the toggle default AFTER siblings are wired - the XAML
         // Initialized event for IsChecked=True would fire mid-load and NRE.
-        if (ProxyToggle is not null) ProxyToggle.IsChecked = true;
+        //
+        // Both switches used to be forced here on every open, so the operator's
+        // choice was lost each time the panel was reopened. The saved per-tool
+        // values are reflected instead, so ON stays ON and OFF stays OFF.
+        SyncProxyToggle();
+        SyncLoginProxyToggle();
 
         // Accio-only extra: the x-trick is create.py's "<address>x" probe step.
         // Default ON (the script's own default) and never offered on any other
@@ -270,11 +278,39 @@ public partial class AccioPanelView : UserControl
     {
         if (LoginProxyToggle is null) return;
         var on = LoginProxyToggle.IsChecked == true;
-        LoginProxyToggle.Content = on ? "ON" : "OFF";
+        UpdateLoginProxyToggleText(on);
+
+        // Restore-on-open path - see OnProxyToggleChanged.
+        if (_syncingProxy) return;
+
+        ToolSettingsStore.SetLoginProxyOn(_tool.Id, on);
+    }
+
+    /// <summary>Keeps the Login-row proxy switch's label and hint in step with the state.</summary>
+    private void UpdateLoginProxyToggleText(bool on)
+    {
+        if (LoginProxyToggle is not null) LoginProxyToggle.Content = on ? "ON" : "OFF";
         if (LoginProxyHint is not null)
             LoginProxyHint.Text = on
                 ? "ON → use first alive proxy from .env / _fallback_proxies.txt."
                 : "OFF → direct connection (current network).";
+    }
+
+    /// <summary>Reflects the persisted per-tool Login-row PROXY flag on the switch.</summary>
+    private void SyncLoginProxyToggle()
+    {
+        if (LoginProxyToggle is null) return;
+        _syncingProxy = true;
+        try
+        {
+            var on = ToolSettingsStore.IsLoginProxyOn(_tool.Id);
+            LoginProxyToggle.IsChecked = on;
+            UpdateLoginProxyToggleText(on);
+        }
+        finally
+        {
+            _syncingProxy = false;
+        }
     }
 
     /// <summary>
@@ -1190,16 +1226,47 @@ public partial class AccioPanelView : UserControl
         if (ProxyToggle is null) return;
 
         var on = ProxyToggle.IsChecked == true;
-        ProxyToggle.Content = on ? "ON" : "OFF";
+        UpdateProxyToggleText(on);
 
+        // Restore-on-open path: the value is already what the user chose, so
+        // writing it back is a no-op and the log line would be noise.
+        if (_syncingProxy) return;
+
+        ToolSettingsStore.SetProxyOn(_tool.Id, on);
+        AppendLog(on
+            ? "🔌 Proxy toggle ON  (configured proxies will be used)"
+            : "🔌 Proxy toggle OFF  (forcing --no-proxy)");
+    }
+
+    /// <summary>Keeps the switch's own label and its hint line in step with the state.</summary>
+    private void UpdateProxyToggleText(bool on)
+    {
+        if (ProxyToggle is not null) ProxyToggle.Content = on ? "ON" : "OFF";
         if (ProxyHint is not null)
             ProxyHint.Text = on
                 ? "ON → use configured proxies (.env or _fallback_proxies.txt)."
                 : "OFF → force --no-proxy regardless of mode.";
+    }
 
-        AppendLog(on
-            ? "🔌 Proxy toggle ON  (configured proxies will be used)"
-            : "🔌 Proxy toggle OFF  (forcing --no-proxy)");
+    /// <summary>
+    /// Reflects the persisted per-tool PROXY flag on the Create-run switch.
+    /// Runs after the siblings are wired, for the XAML-load reason described on
+    /// <see cref="OnProxyToggleChanged"/>.
+    /// </summary>
+    private void SyncProxyToggle()
+    {
+        if (ProxyToggle is null) return;
+        _syncingProxy = true;
+        try
+        {
+            var on = ToolSettingsStore.IsProxyOn(_tool.Id);
+            ProxyToggle.IsChecked = on;
+            UpdateProxyToggleText(on);
+        }
+        finally
+        {
+            _syncingProxy = false;
+        }
     }
 
     /// <summary>

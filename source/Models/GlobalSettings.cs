@@ -58,7 +58,10 @@ public sealed class AccountPasswordSettings
     public string Value { get; set; } = "";
 }
 
-/// <summary>Method 1 - one of the five built-in services, optional own API key.</summary>
+/// <summary>
+/// Method 1 - one of the built-in services listed in
+/// <c>TempMailProviderCatalog.All</c> (17 as of 2026-10-22), optional own API key.
+/// </summary>
 public sealed class TempMailSettings
 {
     public int ServiceIndex { get; set; } = 1;
@@ -185,6 +188,31 @@ public sealed class ToolSettings
     /// survives a restart.
     /// </summary>
     public bool Headless { get; set; } = false;
+
+    /// <summary>
+    /// Per-tool PROXY switch for the Create run.
+    ///
+    /// <para>Default <c>true</c> = proxy ON. That is exactly what the panel did
+    /// before this flag existed: it forced the toggle ON every time the tool
+    /// panel was opened, so a choice the operator had made could never survive a
+    /// restart. Now the switch is written here the moment it is flipped and read
+    /// back on the next open, so ON stays ON and OFF stays OFF.</para>
+    ///
+    /// <para><c>false</c> = the panel appends <c>--no-proxy</c> and sets
+    /// <c>PANEL_PROXY=off</c> for the script. Nothing else about the run changes
+    /// — this is the same switch that already existed, only remembered now.</para>
+    /// </summary>
+    public bool ProxyOn { get; set; } = true;
+
+    /// <summary>
+    /// Accio-only: PROXY switch for the Login row ("🔑 Login"), the Playwright
+    /// browser that replays stored cookies.
+    ///
+    /// <para>Default <c>false</c> = OFF, matching what the toggle already showed
+    /// before this flag existed (the XAML ships it as "OFF" and nothing forced it
+    /// ON), so an install that never touches it behaves exactly as before.</para>
+    /// </summary>
+    public bool LoginProxyOn { get; set; } = false;
 
     /// <summary>
     /// Per-tool landing page for the Login tab's row "🔑 Login" run - mirrors the

@@ -45,6 +45,10 @@ public partial class PythonToolPanelView : UserControl
     // Guards the two headless switches (Create tab + Extra tab) against firing
     // each other's handlers while they are being kept in step.
     private bool _syncingHeadless;
+    // Same guard for the per-tool PROXY switch: SyncProxyToggle() writes the
+    // saved value onto the toggle from code, which fires OnProxyToggleChanged
+    // again - without this, every open would also re-log the switch line.
+    private bool _syncingProxy;
     // The Extra tab runs at most one script at a time; these are what STOP uses.
     private CancellationTokenSource? _extraCts;
     private System.Diagnostics.Process? _extraProc;
@@ -87,7 +91,12 @@ public partial class PythonToolPanelView : UserControl
 
         // Set proxy toggle default AFTER siblings are wired - same XAML-load
         // gotcha that bit AccioPanelView first time around.
-        if (ProxyToggle is not null) ProxyToggle.IsChecked = true;
+        //
+        // It used to be forced ON here on every single open, so an operator who
+        // had switched the proxy OFF found it back on next time and had to flip
+        // it again before every run. The saved per-tool value is reflected
+        // instead, so ON stays ON and OFF stays OFF.
+        SyncProxyToggle();
 
         // Same for the per-tool HEADLESS switch: reflect whatever this tool's
         // saved settings say (default OFF = visible browser).
@@ -1344,7 +1353,43 @@ public partial class PythonToolPanelView : UserControl
     {
         if (ProxyToggle is null) return;
         var on = ProxyToggle.IsChecked == true;
-        ProxyToggle.Content = on ? "ON" : "OFF";
+        UpdateProxyToggleText(on);
+
+        // Restore-on-open path: the value is already what the user chose, so
+        // writing it back is a no-op and the log line would be noise.
+        if (_syncingProxy) return;
+
+        ToolSettingsStore.SetProxyOn(_toolId, on);
+        AppendLog(on
+            ? "🔌 Proxy ON  — remembered for this tool; scripts use their own proxy / .env settings."
+            : "🔌 Proxy OFF (--no-proxy) — remembered for this tool.");
+    }
+
+    /// <summary>
+    /// Reflects the persisted per-tool PROXY flag on the switch. Runs after the
+    /// siblings are wired, for the same XAML-load reason the forced-ON default
+    /// was moved there in the first place.
+    /// </summary>
+    private void SyncProxyToggle()
+    {
+        if (ProxyToggle is null) return;
+        _syncingProxy = true;
+        try
+        {
+            var on = ToolSettingsStore.IsProxyOn(_toolId);
+            ProxyToggle.IsChecked = on;
+            UpdateProxyToggleText(on);
+        }
+        finally
+        {
+            _syncingProxy = false;
+        }
+    }
+
+    /// <summary>Keeps the switch's own label and its hint line in step with the state.</summary>
+    private void UpdateProxyToggleText(bool on)
+    {
+        if (ProxyToggle is not null) ProxyToggle.Content = on ? "ON" : "OFF";
         if (ProxyHint is not null)
             ProxyHint.Text = on
                 ? "ON → use the script's own proxy / .env settings."
