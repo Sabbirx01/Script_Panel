@@ -1,9 +1,9 @@
 {
-  "version": "2.1",
-  "tag": "v2.1",
-  "published": "2026-10-22T05:35:00Z",
-  "notes": "v2.1: 17 temp-mail services, remember per-tool proxy switch, robust proxy hostname support, and automatic skip for unreachable temp-mail services.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.1/DeveloperXBulkAccPanel-v2.1.zip",
-  "sha256": "71fc6b0222f641af737cfb384c4976d129f156fb0acfcb9d6555cf7897705979",
-  "size": 128288108
+  "version": "1.2.0",
+  "tag": "v1.2.0",
+  "published": "2026-10-17T08:05:00Z",
+  "notes": "Silent auto-update: the panel downloads, verifies and installs new builds on its own, with no CHECK NOW or INSTALL UPDATE click. Also fixes mouse-wheel scrolling being far too fast, and shows the real build version in the title bar.",
+  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v1.2.0/DeveloperXBulkAccPanel-v1.2.0.zip",
+  "sha256": "ef0a0fe9746389a717022533ba35853b109948a657e8f484f119d830bde97635",
+  "size": 90551567
 }

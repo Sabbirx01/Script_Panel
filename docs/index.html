@@ -31,7 +31,7 @@ body:before,body:after{content:"";position:fixed;pointer-events:none;border-radi
 // Honest note: this is deterrence only. The browser must call these URLs, so
 // anyone watching the Network tab still sees them plainly.
 const _u=s=>atob(s);
-const CFG={releaseApi:_u('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9TYWJiaXJ4MDEvU2NyaXB0X1BhbmVsL3JlbGVhc2VzL2xhdGVzdA=='),licenseApi:_u('aHR0cHM6Ly9saWNlbnNlLmF1dG9tYXRpb25zZXJ2aWNlLm9ubGluZS9hcGkvZG93bmxvYWQucGhw'),whatsapp:_u('ODgwMTQxMDAxNDQ0Mg=='),fallback:{tag:'v2.1',name:'DeveloperXPanel-Setup.exe',size:625631618,url:'https://github.com/Sabbirx01/Script_Panel/releases/download/v2.1/DeveloperXPanel-Setup.exe'}};
+const CFG={releaseApi:_u('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9TYWJiaXJ4MDEvU2NyaXB0X1BhbmVsL3JlbGVhc2VzL2xhdGVzdA=='),licenseApi:_u('aHR0cHM6Ly9saWNlbnNlLmF1dG9tYXRpb25zZXJ2aWNlLm9ubGluZS9hcGkvZG93bmxvYWQucGhw'),whatsapp:_u('ODgwMTQxMDAxNDQ0Mg=='),fallback:{tag:'v1.2.0',name:'DeveloperXPanel-Setup.exe',size:624807302,url:'https://github.com/Sabbirx01/Script_Panel/releases/download/v1.2.0/DeveloperXPanel-Setup.exe'}};
 const $=id=>document.getElementById(id), show=(id,on)=>$(id).classList.toggle('show',on);
 function say(kind,text){const x=$('msg');x.className='box show '+kind;x.textContent=text}
 function id32(){if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID().replace(/-/g,'').slice(0,32);if(window.crypto&&typeof window.crypto.getRandomValues==='function'){const b=new Uint8Array(16);window.crypto.getRandomValues(b);return Array.prototype.map.call(b,x=>('0'+x.toString(16)).slice(-2)).join('')}return String(Date.now())+String(Math.random()).slice(2)}
