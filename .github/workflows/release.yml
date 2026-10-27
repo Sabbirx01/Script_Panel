@@ -1,6 +1,9 @@
 name: Build and publish release
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -38,6 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $v = '${{ inputs.version }}'
+          if (-not $v) { $v = '${{ github.ref_name }}' }
           $tag = if ($v.StartsWith('v')) { $v } else { "v$v" }
           $stage = Join-Path $env:RUNNER_TEMP 'release-stage'
           $out = Join-Path $env:RUNNER_TEMP 'release-out'
@@ -66,7 +70,8 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           name: Developer X Bulk Acc Panel ${{ env.TAG }}
-          body: ${{ inputs.notes }}
+          body: ${{ inputs.notes || 'Developer X Bulk Acc Panel release' }}
+          generate_release_notes: true
           draft: false
           prerelease: false
           files: |
