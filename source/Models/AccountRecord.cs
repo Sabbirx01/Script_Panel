@@ -13,7 +13,15 @@ public enum MailSource
     /// <summary>BAT [1.5] - same Gmail rotation but the driver pauses for a manual OTP.</summary>
     SemiAuto,
     /// <summary>BAT [1.6] - same Gmail rotation but tagged as direct connection (no proxy).</summary>
-    NoProxy
+    NoProxy,
+
+    /// <summary>
+    /// Outlook token pool - rows of <c>email|password|refresh_token|client_id</c>.
+    /// The refresh token is exchanged for an IMAP/Graph access token and the
+    /// verification code is read straight out of the mailbox, so no app
+    /// password is involved anywhere.
+    /// </summary>
+    OutlookPool
 }
 
 /// <summary>Lifecycle of one tool account.</summary>

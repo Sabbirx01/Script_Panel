@@ -814,6 +814,7 @@ public partial class AccioPanelView : UserControl
       : ModeCustom.IsChecked == true ? MailSource.CustomMail
       : ModeSemi.IsChecked   == true ? MailSource.SemiAuto
       : ModeNoPx.IsChecked   == true ? MailSource.NoProxy
+      : ModeOutlook.IsChecked == true ? MailSource.OutlookPool
       : AutoSource();
 
     /// <summary>
@@ -852,6 +853,7 @@ public partial class AccioPanelView : UserControl
         ModeCustom.IsChecked = auto == MailSource.CustomMail;
         ModeSemi.IsChecked   = auto == MailSource.SemiAuto;
         ModeNoPx.IsChecked   = auto == MailSource.NoProxy;
+        ModeOutlook.IsChecked = auto == MailSource.OutlookPool;
         ModeTest.IsChecked   = false;
 
         // Every mode create.py can actually run is offered. Nothing here is
@@ -878,6 +880,11 @@ public partial class AccioPanelView : UserControl
                                || SettingsStore.CustomDomainUsable;
         ModeSemi.IsEnabled   = SettingsStore.Usable(MailSource.SemiAuto);
         ModeNoPx.IsEnabled   = SettingsStore.Usable(MailSource.NoProxy);
+
+        // Method 5 - create.py reads the code from the token mailbox itself
+        // (outlook_pool.wait_for_otp), so the radio is live as soon as the pool
+        // holds a row and is switched on.
+        ModeOutlook.IsEnabled = SettingsStore.Usable(MailSource.OutlookPool);
 
         // Tell the operator exactly what each method will do, and what it will
         // use, rather than only which one is auto-picked.

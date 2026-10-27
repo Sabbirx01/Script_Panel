@@ -1287,7 +1287,12 @@ public partial class PythonToolPanelView : UserControl
     /// </summary>
     private MailSource AutoSource()
     {
-        // Gmail Pool first, by request: it is the method that must be
+        // Outlook token pool wins when it is switched on and holds mailboxes:
+        // it is the only method whose OTP comes from a real inbox via a token,
+        // and picking it explicitly in Global Settings is a deliberate choice.
+        if (SettingsStore.OutlookPoolUsable)  return MailSource.OutlookPool;
+
+        // Gmail Pool next, by request: it is the method that must be
         // pre-selected every time, on every tool.  The other methods stay one
         // click away, and are still auto-picked when the pool is not configured
         // at all (otherwise the radio would default to a method that cannot run).
@@ -1308,6 +1313,7 @@ public partial class PythonToolPanelView : UserControl
       : ModeCustom.IsChecked == true ? MailSource.CustomMail
       : ModeSemi.IsChecked   == true ? MailSource.SemiAuto
       : ModeNoPx.IsChecked   == true ? MailSource.NoProxy
+      : ModeOutlook.IsChecked == true ? MailSource.OutlookPool
       : AutoSource();
 
     /// <summary>
@@ -1337,6 +1343,14 @@ public partial class PythonToolPanelView : UserControl
             ? "(none configured)"
             : $"{cm.Email}  (app password: {(string.IsNullOrWhiteSpace(cm.AppPassword) ? "MISSING" : "set")})";
 
+        // Method 5 - the token pool. Shows the count even when it is switched
+        // off, so an operator can tell "empty" apart from "disabled".
+        var outlookCount = OutlookPoolService.Load().Count;
+        OutlookPoolSummary.Text = outlookCount == 0
+            ? "(empty — paste mailboxes in Global Settings → Method 5)"
+            : $"{outlookCount} mailbox{(outlookCount == 1 ? "" : "es")}  ·  " +
+              (s.OutlookPool?.Enabled == true ? "ENABLED" : "disabled (tick Method 5 to use)");
+
         // Default the per-run radio to whatever AutoSource() picks — user can
         // still override per-run by clicking another radio before RUN.
         var auto = AutoSource();
@@ -1346,6 +1360,7 @@ public partial class PythonToolPanelView : UserControl
         ModeCustom.IsChecked = auto == MailSource.CustomMail;
         ModeSemi.IsChecked   = auto == MailSource.SemiAuto;
         ModeNoPx.IsChecked   = auto == MailSource.NoProxy;
+        ModeOutlook.IsChecked = auto == MailSource.OutlookPool;
         ModeTest.IsChecked   = false;
     }
 

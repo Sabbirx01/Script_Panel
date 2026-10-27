@@ -253,6 +253,17 @@
                                     <TextBlock Grid.Column="1" x:Name="CustomMailSummary" Style="{StaticResource T.Mini}"
                                                Foreground="{StaticResource B.Text}" VerticalAlignment="Center" FontFamily="{StaticResource F.Mono}" />
                                 </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Token mail     :" Style="{StaticResource T.Mini}"
+                                               Foreground="{StaticResource B.TextMuted}" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" x:Name="OutlookPoolSummary" Style="{StaticResource T.Mini}"
+                                               Foreground="{StaticResource B.Text}" VerticalAlignment="Center" FontFamily="{StaticResource F.Mono}"
+                                               TextWrapping="Wrap" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -265,6 +276,8 @@
                         <RadioButton x:Name="ModeSemi"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="5) Semi Automation (manual OTP)" />
                         <RadioButton x:Name="ModeNoPx"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="6) No Proxy (force direct)" />
                         <RadioButton x:Name="ModeTest"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="7) Test (no real signup — log stream only)" />
+                        <RadioButton x:Name="ModeOutlook" GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}"
+                                     Content="8) Token Mail (Outlook pool — rotates, OTP read from the inbox)" />
 
                         <!-- proxy override -->
                         <Border Background="#FF0B1220" BorderBrush="{StaticResource B.Line}" BorderThickness="1"

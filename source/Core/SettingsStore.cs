@@ -99,6 +99,14 @@ public static class SettingsStore
             return ("", "");
         }
 
+    /// <summary>
+    /// Method 5 - the Outlook token pool. Usable once it is switched on AND the
+    /// file actually holds at least one parsable row, so an empty pool never
+    /// silently wins the auto-selection over a method that can run.
+    /// </summary>
+    public static bool OutlookPoolUsable =>
+        (_current.OutlookPool?.Enabled ?? false) && OutlookPoolService.Load().Count > 0;
+
     /// <summary>BAT [1.5] - same Gmail rotation, but the driver waits for a manual OTP.</summary>
     public static bool SemiAutoUsable => DottedGmailUsable;
 
@@ -115,6 +123,7 @@ public static class SettingsStore
         MailSource.CustomMail => CustomMailUsable,
         MailSource.SemiAuto => SemiAutoUsable,
         MailSource.NoProxy => NoProxyUsable,
+        MailSource.OutlookPool => OutlookPoolUsable,
         _ => false
     };
 
@@ -127,6 +136,7 @@ public static class SettingsStore
         MailSource.CustomMail => "Needs a Gmail + 16-char app password in Method 4.",
         MailSource.SemiAuto => "Needs at least one Gmail in Global Settings.",
         MailSource.NoProxy => "Always available.",
+        MailSource.OutlookPool => "Switch the Outlook pool on and import at least one mailbox.",
         _ => ""
     };
 

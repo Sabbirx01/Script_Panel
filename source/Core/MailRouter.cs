@@ -62,6 +62,7 @@ public static class MailRouter
             MailSource.CustomMail   => NextCustomMail(),
             MailSource.SemiAuto      => NextSemiAuto(toolId, serial),
             MailSource.NoProxy      => NextNoProxy(toolId, serial),
+            MailSource.OutlookPool  => NextOutlookPool(toolId, serial),
             _ => null
         };
 
@@ -330,6 +331,53 @@ public static class MailRouter
     /// </summary>
     private static RoutedAddress? NextNoProxy(string toolId, int serial) =>
         WithSourceRef(NextDottedGmail(toolId, serial), "No Proxy");
+
+    /// <summary>
+    /// Method 5 - hand out a <b>dotted alias</b> of the next pool mailbox.
+    ///
+    /// <para>Outlook ignores dots in the local part, so
+    /// <c>Kadijah.Jopek4666@outlook.fr</c> is still delivered into the
+    /// <c>KadijahJopek4666@outlook.fr</c> inbox. That is the same trick the Gmail
+    /// pool uses: one bought mailbox yields many signups, every one of them
+    /// still readable through the row's refresh token (the tool reads the code
+    /// from the BASE address).</para>
+    /// </summary>
+    private static RoutedAddress? NextOutlookPool(string toolId, int serial)
+    {
+        var acct = OutlookPoolService.Next(toolId);
+        if (acct is null) return null;
+
+        // Dots are opt-in. A mailbox that does not treat them as an alias silently
+        // swallows the verification mail, so the safe default is the plain address.
+        if (SettingsStore.Current.OutlookPool?.DotAlias != true)
+            return new RoutedAddress(acct.Email, acct.Email);
+
+        var at = acct.Email.IndexOf('@');
+        if (at <= 0) return new RoutedAddress(acct.Email, acct.Email);
+
+        var localPart = acct.Email[..at];
+        var domain = acct.Email[(at + 1)..];
+
+        var capacity = Capacity(localPart);
+        var start = (int)(StableHash(toolId + ":outlook:" + serial) % (uint)capacity);
+
+        // Linear probe until a dot variation this tool has not used yet is free.
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            var variant = DotVariant(localPart, start + attempt);
+            var alias = variant + "@" + domain;
+
+            if (AliasGuard.IsUsed(toolId, variant)) continue;
+
+            AliasGuard.Mark(toolId, variant);
+            Log.Info("mail", $"    outlook alias {alias}  ->  {acct.Email}");
+            return new RoutedAddress(alias, acct.Email);
+        }
+
+        // Every variation for this mailbox is taken - fall back to the plain
+        // address rather than failing the run.
+        return new RoutedAddress(acct.Email, acct.Email);
+    }
 
     private static RoutedAddress? WithSourceRef(RoutedAddress? inner, string marker) =>
         inner is null ? null : inner with { SourceRef = marker };

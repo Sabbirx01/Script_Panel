@@ -807,6 +807,9 @@ public static class AccountStore
         "semi-auto"      => MailSource.SemiAuto,
         "manual-otp"     => MailSource.SemiAuto,
         "no-proxy"       => MailSource.NoProxy,
+        "outlook-pool"   => MailSource.OutlookPool,
+        "outlook"        => MailSource.OutlookPool,
+        "outlook-token"  => MailSource.OutlookPool,
         _                => MailSource.DottedGmail
     };
 

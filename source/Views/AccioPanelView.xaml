@@ -273,6 +273,8 @@
                         <RadioButton x:Name="ModeCustom" GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="4) Custom Mail (one Gmail + app password, used once)" />
                         <RadioButton x:Name="ModeSemi"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="5) Semi Automation (manual OTP)" />
                         <RadioButton x:Name="ModeNoPx"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="6) No Proxy (direct connection)" />
+                        <RadioButton x:Name="ModeOutlook" GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}"
+                                     Content="7) Token Mail (Outlook pool — rotates, OTP read from the inbox)" />
                         <RadioButton x:Name="ModeTest"   GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}" Content="7) Test (no real signup — UI demo only)" />
                         <TextBlock x:Name="MailModeHint" Style="{StaticResource T.Mini}" Margin="2,8,0,0" TextWrapping="Wrap" />
 

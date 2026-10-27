@@ -196,6 +196,7 @@ public static class CreateAccountRunner
         MailSource.CustomMail   => "Custom Mail",
         MailSource.SemiAuto     => "Semi Automation",
         MailSource.NoProxy      => "No Proxy",
+        MailSource.OutlookPool  => "Outlook Pool",
         _ => source.ToString()
     };
 }

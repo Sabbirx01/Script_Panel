@@ -100,6 +100,11 @@ public partial class GlobalSettingsView : UserControl
         // Account password (shared by every tool)
         AccountPassBox.Text = s.AccountPassword.Value;
 
+        // Method 5 - Outlook token pool
+        OutlookPoolEnabledCheck.IsChecked = s.OutlookPool.Enabled;
+        OutlookDotAliasCheck.IsChecked = s.OutlookPool.DotAlias;
+        LoadOutlookPoolBox();
+
         ApplyTargetMask();
         ApplyCustomMailMask();
         ApplyAccountPassMask();
@@ -584,6 +589,19 @@ public partial class GlobalSettingsView : UserControl
             {
                 Value = AccountPassBox.Text.Trim()
             },
+            OutlookPool = new OutlookPoolSettings
+            {
+                Enabled = OutlookPoolEnabledCheck.IsChecked == true,
+                DotAlias = OutlookDotAliasCheck.IsChecked == true,
+
+                // The file path is no longer typed in: it is either the panel
+                // default or whatever an operator configured earlier. Keep it.
+                FilePath = SettingsStore.Current.OutlookPool?.FilePath ?? "",
+
+                // The rotation cursor belongs to the running panel - saving the
+                // form must never rewind it.
+                Cursor = SettingsStore.Current.OutlookPool?.Cursor ?? 0
+            },
             Update = new UpdateSettings
             {
                 BaseUrl = UpdateUrlBox.Text.Trim()
@@ -629,6 +647,172 @@ public partial class GlobalSettingsView : UserControl
         {
             ShowToast("Saved. Tool panels can use these methods right away.");
             Log.Success("", "Global mail settings saved.");
+        }
+    }
+
+    // ------------------------------------------------- Method 5: Outlook pool
+
+    /// <summary>Addresses the last CHECK POOL run marked dead (lower-cased).</summary>
+    private readonly HashSet<string> _outlookDead = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True while the box is being filled from the file (not user typing).</summary>
+    private bool _loadingOutlookBox;
+
+    /// <summary>Put the pool file's rows into the big paste box.</summary>
+    private void LoadOutlookPoolBox()
+    {
+        _loadingOutlookBox = true;
+        try
+        {
+            var path = OutlookPoolService.PoolPath;
+            OutlookPoolBox.Text = File.Exists(path)
+                ? File.ReadAllText(path, System.Text.Encoding.UTF8)
+                : "";
+        }
+        catch (Exception ex)
+        {
+            OutlookPoolBox.Text = "";
+            OutlookPoolStatus.Text = "Cannot read the pool file: " + ex.Message;
+        }
+        finally
+        {
+            _loadingOutlookBox = false;
+        }
+        RefreshOutlookPool();
+    }
+
+    /// <summary>Repaint the counters from what is currently in the box.</summary>
+    private void RefreshOutlookPool()
+    {
+        var (accounts, bad) = OutlookPoolService.ParseText(OutlookPoolBox.Text);
+        var byDomain = accounts
+            .GroupBy(a => a.Email.Split('@').Last().ToLowerInvariant())
+            .OrderBy(g => g.Key)
+            .Select(g => $"{g.Key}: {g.Count()}");
+
+        OutlookPoolSummary.Text = accounts.Count == 0
+            ? "No mailbox in the list yet - paste the rows above and press SAVE POOL."
+            : $"{accounts.Count} mailbox(es) · {string.Join(" · ", byDomain)}" +
+              (bad.Count > 0 ? $"   ·   {bad.Count} malformed line(s) will be skipped" : "");
+
+        OutlookPoolPathLabel.Text = "Pool file: " + OutlookPoolService.PoolPath;
+        if (accounts.Count > 0 && string.IsNullOrWhiteSpace(OutlookPoolStatus.Text))
+            OutlookPoolStatus.Text = "Not checked yet - press CHECK POOL.";
+    }
+
+    /// <summary>Write the box's rows to the pool file, de-duplicated, then re-read.</summary>
+    private void OnSaveOutlookPool(object sender, RoutedEventArgs e)
+    {
+        var (accounts, bad) = OutlookPoolService.ParseText(OutlookPoolBox.Text);
+        if (accounts.Count == 0)
+        {
+            OutlookPoolStatus.Text = bad.Count > 0
+                ? "Nothing valid in the box - every line is missing a field or a client id."
+                : "The box is empty - paste the rows first.";
+            return;
+        }
+
+        int written;
+        try
+        {
+            written = OutlookPoolService.Save(accounts);
+        }
+        catch (Exception ex)
+        {
+            OutlookPoolStatus.Text = "Cannot write the pool file: " + ex.Message;
+            return;
+        }
+
+        LoadOutlookPoolBox();
+        OutlookPoolStatus.Text = $"Saved {written} mailbox(es)" +
+                                 (bad.Count > 0 ? $" · {bad.Count} malformed line(s) skipped" : "");
+        Log.Info("mail", $"  [settings] Outlook pool saved: {written} row(s), {bad.Count} skipped");
+    }
+
+    private void OnReloadOutlookPool(object sender, RoutedEventArgs e)
+    {
+        LoadOutlookPoolBox();
+        OutlookPoolStatus.Text = "Reloaded from disk.";
+    }
+
+    private async void OnCheckOutlookPool(object sender, RoutedEventArgs e)
+    {
+        var (pool, _bad) = OutlookPoolService.ParseText(OutlookPoolBox.Text);
+        if (pool.Count == 0)
+        {
+            OutlookPoolStatus.Text = "The list is empty - nothing to check.";
+            return;
+        }
+
+        OutlookCheckButton.IsEnabled = false;
+        OutlookRemoveDeadButton.IsEnabled = false;
+        OutlookPoolStatus.Text = $"Checking {pool.Count} mailbox(es) against Microsoft…";
+
+        _outlookDead.Clear();
+        var alive = 0;
+        var gate = new SemaphoreSlim(6);
+
+        var tasks = pool.Select(async acct =>
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var (ok, _reason) = await OutlookPoolService.CheckAsync(acct).ConfigureAwait(false);
+                if (ok) Interlocked.Increment(ref alive);
+                else _outlookDead.Add(acct.Email);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(true);
+        }
+        finally
+        {
+            OutlookCheckButton.IsEnabled = true;
+            OutlookRemoveDeadButton.IsEnabled = _outlookDead.Count > 0;
+        }
+
+        var tail = _outlookDead.Count == 0
+            ? ""
+            : "  (dead: " + string.Join(", ", _outlookDead.Take(4)) +
+              (_outlookDead.Count > 4 ? "…" : "") + ")";
+        OutlookPoolStatus.Text = $"{alive} live · {_outlookDead.Count} dead{tail}";
+        Log.Info("mail", $"  [settings] Outlook pool check: {alive} live · {_outlookDead.Count} dead");
+    }
+
+    private void OnRemoveDeadOutlook(object sender, RoutedEventArgs e)
+    {
+        if (_outlookDead.Count == 0)
+        {
+            OutlookPoolStatus.Text = "Run CHECK POOL first - nothing is marked dead yet.";
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            $"Remove {_outlookDead.Count} dead mailbox(es) from the pool?",
+            "Mail pool", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var removed = _outlookDead.Count;
+        var (accounts, _bad) = OutlookPoolService.ParseText(OutlookPoolBox.Text);
+        var keep = accounts.Where(a => !_outlookDead.Contains(a.Email)).ToList();
+
+        try
+        {
+            var written = OutlookPoolService.Save(keep);
+            _outlookDead.Clear();
+            LoadOutlookPoolBox();
+            OutlookPoolStatus.Text = $"Removed {removed} · pool now {written}";
+            Log.Warn("mail", $"  [settings] removed {removed} dead mailbox(es) · {written} left");
+        }
+        catch (Exception ex)
+        {
+            OutlookPoolStatus.Text = "Cannot write the pool file: " + ex.Message;
         }
     }
 

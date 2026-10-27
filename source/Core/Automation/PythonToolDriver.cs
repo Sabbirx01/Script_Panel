@@ -549,6 +549,16 @@ public sealed class PythonToolDriver : IToolDriver
                 keys["PANEL_ACCOUNT_PASSWORD"] = accountPassword;   // older alias
             }
 
+            // Outlook token pool: the script reads the code straight out of the
+            // mailbox with the row's refresh token, so it needs the pool path -
+            // and must NOT receive a Gmail login, which would send it down the
+            // app-password IMAP route instead.
+            if (mode == MailSource.OutlookPool)
+            {
+                keys["OUTLOOK_POOL_FILE"] = OutlookPoolService.PoolPath;
+                keys["OUTLOOK_POOL_MODE"] = "1";
+            }
+
             // For Temp Mail: don't write GMAIL_USER from the pool — that
             // would silently override the temp mailbox with a Gmail.  The
             // temp script reads SIGNUP_EMAIL for the address and
@@ -561,7 +571,7 @@ public sealed class PythonToolDriver : IToolDriver
                 // IMAP still needed for the verify URL?  No — the temp
                 // script reads OTP via API.  Skip GMAIL_USER entirely.
             }
-            else
+            else if (mode != MailSource.OutlookPool)
             {
                 keys["GMAIL_USER"]         = imapGmail;
                 // 16 bare characters: Gmail's display form ("abcd efgh ijkl mnop")
@@ -754,6 +764,7 @@ public sealed class PythonToolDriver : IToolDriver
             MailSource.TempMail      => "temp-mail",
             MailSource.SemiAuto      => "semi-auto",
             MailSource.NoProxy       => "no-proxy",
+            MailSource.OutlookPool   => "outlook",
             _ => "gmail-pool"
         };
 

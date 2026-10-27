@@ -430,6 +430,14 @@ public sealed class AccioToolDriver : IToolDriver
                 args.Add("--no-proxy");
                 break;
 
+            case MailSource.OutlookPool:
+                // A token mailbox is not a Gmail, so create.py's Gmail-only
+                // guard has to be waived. The code itself is read by
+                // fetch_otp -> outlook_pool (refresh token -> IMAP/Graph), so
+                // no app password is involved anywhere.
+                args.Add("--allow-non-gmail");
+                break;
+
             default:
                 throw new InvalidOperationException(
                     $"AccioToolDriver does not know how to handle MailSource.{source}");

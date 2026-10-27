@@ -319,6 +319,79 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ===================== METHOD 5 ===================== -->
+                <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="METHOD 5 - TOKEN MAIL POOL  (OTP READ FROM THE REAL INBOX)"
+                                   Style="{StaticResource T.Section}" />
+                        <Rectangle Style="{StaticResource S.Rule}" />
+
+                        <TextBlock Style="{StaticResource T.Mini}" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="One mailbox per line:  email|password|refresh_token|client_id .  The refresh token is exchanged for an access token and the verification code is read straight out of the mailbox over IMAP (Graph as fallback) - no app password, no guessed code. Every tool rotates through this list." />
+
+                        <CheckBox x:Name="OutlookPoolEnabledCheck"
+                                  Style="{StaticResource S.CheckBox}"
+                                  Content="Use this pool for new accounts (wins over Methods 1-4)"
+                                  Margin="0,0,0,10" />
+
+                        <CheckBox x:Name="OutlookDotAliasCheck"
+                                  Style="{StaticResource S.CheckBox}"
+                                  Content="Dotted alias  (Kadijah.Jopek@outlook.fr  instead of  KadijahJopek@outlook.fr)"
+                                  Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource T.Mini}" Margin="26,0,0,14" TextWrapping="Wrap"
+                                   Text="Off by default. If the mailbox does not treat dots as an alias, the verification mail is never delivered and the run waits until it times out." />
+
+                        <TextBlock Text="Mailbox list :" Style="{StaticResource FieldLabel}" />
+                        <TextBox x:Name="OutlookPoolBox"
+                                 Height="170"
+                                 AcceptsReturn="True"
+                                 AcceptsTab="False"
+                                 TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="{StaticResource F.Mono}"
+                                 FontSize="12"
+                                 Style="{StaticResource S.TextBox}"
+                                 Padding="10,8"
+                                 Margin="0,0,0,8" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="OutlookSaveButton"
+                                    Content="SAVE POOL"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Padding="14,7"
+                                    Click="OnSaveOutlookPool" />
+                            <Button x:Name="OutlookCheckButton"
+                                    Content="CHECK POOL"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Padding="14,7" Margin="10,0,0,0"
+                                    Click="OnCheckOutlookPool" />
+                            <Button x:Name="OutlookRemoveDeadButton"
+                                    Content="REMOVE DEAD"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Padding="14,7" Margin="10,0,0,0"
+                                    Click="OnRemoveDeadOutlook" />
+                            <Button x:Name="OutlookOpenButton"
+                                    Content="RELOAD FILE"
+                                    Style="{StaticResource S.GhostButton}"
+                                    Padding="14,7" Margin="10,0,0,0"
+                                    Click="OnReloadOutlookPool" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="OutlookPoolSummary"
+                                   Style="{StaticResource T.Mini}"
+                                   Margin="2,12,0,0" TextWrapping="Wrap" />
+                        <TextBlock x:Name="OutlookPoolStatus"
+                                   Style="{StaticResource T.Mini}"
+                                   Margin="2,6,0,0" TextWrapping="Wrap" />
+
+                        <TextBlock x:Name="OutlookPoolPathLabel"
+                                   Style="{StaticResource T.Mini}"
+                                   Margin="2,6,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource B.TextDim}" />
+                    </StackPanel>
+                </Border>
+
                 <!-- ===================== ACCOUNT PASSWORD ===================== -->
                 <Border Style="{StaticResource S.Card}" Margin="0,0,0,16">
                     <StackPanel>

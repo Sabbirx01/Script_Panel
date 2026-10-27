@@ -12,6 +12,14 @@ public sealed class GlobalSettings
     public CustomMailSettings CustomMail { get; set; } = new();
 
     /// <summary>
+    /// Method 5 - the Outlook token pool. One row per mailbox:
+    /// <c>email|password|refresh_token|client_id</c>. The refresh token buys an
+    /// IMAP / Graph access token, so the verification code is read from the real
+    /// inbox instead of a disposable temp address.
+    /// </summary>
+    public OutlookPoolSettings OutlookPool { get; set; } = new();
+
+    /// <summary>
     /// The password every tool puts on the accounts it creates.  Kept here,
     /// beside the mail, so that no tool has to carry one in its own source:
     /// each tool used to ship the operator's own password as a literal
@@ -109,6 +117,36 @@ public sealed class CustomMailSettings
 
     /// <summary>Wipe the fields after a successful batch so the next run cannot reuse them.</summary>
     public bool ClearAfterUse { get; set; } = true;
+}
+
+/// <summary>
+/// Method 5 - the Outlook token pool (<c>accounts_outlook_panel.txt</c>).
+/// </summary>
+public sealed class OutlookPoolSettings
+{
+    /// <summary>When false the pool is ignored and the other methods keep working.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// Pool file. Empty means the panel default
+    /// (<c>accounts\accounts_outlook_panel.txt</c>).
+    /// </summary>
+    public string FilePath { get; set; } = "";
+
+    /// <summary>Rotation cursor - survives a restart.</summary>
+    public int Cursor { get; set; }
+
+    /// <summary>
+    /// Sign up with a dotted alias of the pool address
+    /// (<c>Kadijah.Jopek4666@outlook.fr</c> instead of
+    /// <c>KadijahJopek4666@outlook.fr</c>).
+    ///
+    /// <para>Off by default: not every mailbox actually treats dots as an alias,
+    /// and when it does not the verification mail is never delivered - the run
+    /// sits on "waiting for the code" until it times out. Only switch this on
+    /// after a mailbox is proven to still receive mail at a dotted address.</para>
+    /// </summary>
+    public bool DotAlias { get; set; }
 }
 
 /// <summary>Per-tool run settings (Screen 4, section 4).</summary>
