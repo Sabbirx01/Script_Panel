@@ -1,9 +1,9 @@
 {
-  "version": "1.2.0",
-  "tag": "v1.2.0",
-  "published": "2026-10-17T08:05:00Z",
-  "notes": "Silent auto-update: the panel downloads, verifies and installs new builds on its own, with no CHECK NOW or INSTALL UPDATE click. Also fixes mouse-wheel scrolling being far too fast, and shows the real build version in the title bar.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v1.2.0/DeveloperXBulkAccPanel-v1.2.0.zip",
-  "sha256": "ef0a0fe9746389a717022533ba35853b109948a657e8f484f119d830bde97635",
-  "size": 90551567
+  "version": "2.2",
+  "tag": "v2.2",
+  "published": "2026-10-27T03:43:51Z",
+  "notes": "Method 5 - Token Mail: an Outlook mailbox pool (email|password|refresh_token|client_id) whose verification code is read straight out of the inbox over IMAP, with Graph as fallback. Pasted and managed from Global Settings, one radio option in every tool panel, rotation per tool. Dotted aliases are opt-in because a mailbox that ignores dots never delivers the code.",
+  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2/DeveloperXBulkAccPanel-v2.2.zip",
+  "sha256": "4dc9f062d19591436599651e5ffffdf1d3c7cb3cee64447fc725496cd966d2f8",
+  "size": 129655191
 }
