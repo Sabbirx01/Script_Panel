@@ -31,16 +31,36 @@ body:before,body:after{content:"";position:fixed;pointer-events:none;border-radi
 // Honest note: this is deterrence only. The browser must call these URLs, so
 // anyone watching the Network tab still sees them plainly.
 const _u=s=>atob(s);
-const CFG={releaseApi:_u('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9TYWJiaXJ4MDEvU2NyaXB0X1BhbmVsL3JlbGVhc2VzL2xhdGVzdA=='),licenseApi:_u('aHR0cHM6Ly9saWNlbnNlLmF1dG9tYXRpb25zZXJ2aWNlLm9ubGluZS9hcGkvZG93bmxvYWQucGhw'),whatsapp:_u('ODgwMTQxMDAxNDQ0Mg=='),fallback:{tag:'v1.2.0',name:'DeveloperXPanel-Setup.exe',size:624807302,url:'https://github.com/Sabbirx01/Script_Panel/releases/download/v1.2.0/DeveloperXPanel-Setup.exe'}};
+// Primary source is the static Pages feed (no rate limit). The GitHub API is a
+// second try only, and the hardcoded values below are a last resort.
+const CFG={feed:_u('aHR0cHM6Ly9zYWJiaXJ4MDEuZ2l0aHViLmlvL1NjcmlwdF9QYW5lbC91cGRhdGUuanNvbg=='),releaseApi:_u('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9TYWJiaXJ4MDEvU2NyaXB0X1BhbmVsL3JlbGVhc2VzL2xhdGVzdA=='),licenseApi:_u('aHR0cHM6Ly9saWNlbnNlLmF1dG9tYXRpb25zZXJ2aWNlLm9ubGluZS9hcGkvZG93bmxvYWQucGhw'),whatsapp:_u('ODgwMTQxMDAxNDQ0Mg=='),fallback:{tag:'v2.2',name:'DeveloperXBulkAccPanel-v2.2.zip',size:129655191,url:'https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2/DeveloperXBulkAccPanel-v2.2.zip',digest:'sha256:4dc9f062d19591436599651e5ffffdf1d3c7cb3cee64447fc725496cd966d2f8'}};
 const $=id=>document.getElementById(id), show=(id,on)=>$(id).classList.toggle('show',on);
 function say(kind,text){const x=$('msg');x.className='box show '+kind;x.textContent=text}
 function id32(){if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID().replace(/-/g,'').slice(0,32);if(window.crypto&&typeof window.crypto.getRandomValues==='function'){const b=new Uint8Array(16);window.crypto.getRandomValues(b);return Array.prototype.map.call(b,x=>('0'+x.toString(16)).slice(-2)).join('')}return String(Date.now())+String(Math.random()).slice(2)}
 function device(){let d='';try{d=sessionStorage.getItem('dx-download-device')||''}catch{}if(!d){d='WEB-'+id32().toUpperCase();try{sessionStorage.setItem('dx-download-device',d)}catch{}}return d}
 async function verify(key){const nonce=id32();let r;try{r=await fetch(CFG.licenseApi,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({license_key:key,device_id:device(),nonce,product:'panel',activate:false}),cache:'no-store'})}catch(e){throw Error('লাইসেন্স সার্ভারে পৌঁছানো যায়নি। Internet/VPN বা browser security check করুন।')}const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw Error('Licence server returned an invalid response')}if(!r.ok)throw Error(data.message||('Licence server HTTP '+r.status));return data}
-async function release(){try{const r=await fetch(CFG.releaseApi,{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(!r.ok)throw Error('GitHub HTTP '+r.status);const rel=await r.json(),a=(rel.assets||[]).find(x=>x.name==='DeveloperXPanel-Setup.exe')||(rel.assets||[]).find(x=>/\.zip$/i.test(x.name));if(!a)throw Error('GitHub release package পাওয়া গেল না');return {rel,a}}catch(e){return {rel:{tag_name:CFG.fallback.tag},a:{name:CFG.fallback.name,size:CFG.fallback.size,browser_download_url:CFG.fallback.url,digest:''},fallback:true}}}
+function feedPackage(f){
+  if(!f||!f.packageUrl)throw Error('feed has no packageUrl');
+  const name=(String(f.packageUrl).split('?')[0].split('/').pop())||'package.zip';
+  return {rel:{tag_name:f.tag||('v'+(f.version||'latest'))},a:{name,size:Number(f.size)||0,browser_download_url:f.packageUrl,digest:f.sha256?('sha256:'+String(f.sha256).replace('sha256:','')):''}};
+}
+async function release(){
+  // 1) static feed on GitHub Pages - never rate limited
+  try{const r=await fetch(CFG.feed,{cache:'no-store'});if(!r.ok)throw Error('feed HTTP '+r.status);return feedPackage(await r.json())}catch(e1){}
+  // 2) GitHub releases API - anonymous quota is 60 per hour per IP
+  try{
+    const r=await fetch(CFG.releaseApi,{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});
+    if(!r.ok)throw Error('GitHub HTTP '+r.status);
+    const rel=await r.json(),a=(rel.assets||[]).find(x=>x.name==='DeveloperXPanel-Setup.exe')||(rel.assets||[]).find(x=>/\.zip$/i.test(x.name));
+    if(!a)throw Error('GitHub release package পাওয়া গেল না');
+    return {rel,a};
+  }catch(e2){}
+  // 3) last resort: values pinned to the current release
+  return {rel:{tag_name:CFG.fallback.tag},a:{name:CFG.fallback.name,size:CFG.fallback.size,browser_download_url:CFG.fallback.url,digest:CFG.fallback.digest},fallback:true};
+}
 function showRelease(rel,a){$('landing-ver').textContent=rel.tag_name||'Latest';$('landing-size').textContent=a.size?`${(a.size/1048576).toFixed(1)} MB`:'Release package'}
 async function openUnlock(){ $('landing').style.display='none';$('login').style.display='block';$('k').focus();const {rel,a}=await release();showRelease(rel,a)}
-async function unlock(){const key=$('k').value.trim();show('dl',false);show('bad',false);show('msg',false);if(key.length<4){say('warn','Key-টি সম্পূর্ণ লিখুন।');return}$('go').disabled=true;$('go').textContent='⏳ দেখা হচ্ছে…';try{const verdict=await verify(key);if(!verdict.valid){$('b-why').textContent=verdict.message||'এই key valid নয়।';show('bad',true);return}const pack=await release(),{rel,a}=pack;$('d-ver').textContent=rel.tag_name||'Latest';$('d-file').textContent=a.name;$('d-size').textContent=a.size?`${(a.size/1048576).toFixed(1)} MB`:'—';$('d-sha').textContent=(a.digest||'SHA-256 unavailable').replace('sha256:','');$('dlbtn').onclick=()=>{window.location.href=a.browser_download_url};show('dl',true);say('good',(verdict.customer?'স্বাগতম, '+verdict.customer+' — ':'🔑 Key ঠিক আছে')+(pack.fallback?' GitHub release API সাময়িকভাবে না খুললেও official Setup link প্রস্তুত আছে।':' নিচের Download button চাপুন।'))}catch(e){say('info',e&&e.message?e.message:'Licence server-এ পৌঁছানো যায়নি। Internet check করে আবার চেষ্টা করুন।')}finally{$('go').disabled=false;$('go').textContent='🔓 লগইন / Login'}}
+async function unlock(){const key=$('k').value.trim();show('dl',false);show('bad',false);show('msg',false);if(key.length<4){say('warn','Key-টি সম্পূর্ণ লিখুন।');return}$('go').disabled=true;$('go').textContent='⏳ দেখা হচ্ছে…';try{const verdict=await verify(key);if(!verdict.valid){$('b-why').textContent=verdict.message||'এই key valid নয়।';show('bad',true);return}const pack=await release(),{rel,a}=pack;$('d-ver').textContent=rel.tag_name||'Latest';$('d-file').textContent=a.name;$('d-size').textContent=a.size?`${(a.size/1048576).toFixed(1)} MB`:'—';$('d-sha').textContent=(a.digest||'SHA-256 unavailable').replace('sha256:','');$('dlbtn').onclick=()=>{window.location.href=a.browser_download_url};show('dl',true);say('good',(verdict.customer?'স্বাগতম, '+verdict.customer+' — ':'🔑 Key ঠিক আছে')+(pack.fallback?' GitHub release API সাময়িকভাবে না খুললেও official download link প্রস্তুত আছে।':' নিচের Download button চাপুন।'))}catch(e){say('info',e&&e.message?e.message:'Licence server-এ পৌঁছানো যায়নি। Internet check করে আবার চেষ্টা করুন।')}finally{$('go').disabled=false;$('go').textContent='🔓 লগইন / Login'}}
 function requestAccess(){const key=$('k').value.trim();const text='আসসালামু আলাইকুম — আমি Developer X প্যানেলের download access চাই.\\n\\nআমার key: '+(key||'(লিখিনি)');window.open('https://wa.me/'+CFG.whatsapp+'?text='+encodeURIComponent(text),'_blank')}
 $('unlockPage').onclick=openUnlock;$('go').onclick=unlock;$('back').onclick=()=>{$('login').style.display='none';$('landing').style.display='block';show('dl',false);show('bad',false);show('msg',false)};$('k').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});$('req').onclick=requestAccess;
 (async()=>{try{const {rel,a}=await release();showRelease(rel,a);document.title='Developer X — '+(rel.tag_name||'Download')}catch{}})();
