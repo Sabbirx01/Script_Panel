@@ -213,6 +213,18 @@ public static class ToolSettingsStore
     // ------------------------------------------------- per-tool SIGNUP URL (create)
 
     /// <summary>
+    /// MiniMax's own sign-up page: the platform OAuth authorise URL the web
+    /// login uses. Creating through it lands the new address inside the normal
+    /// MiniMax signup flow instead of only ever using minimax.io's landing page.
+    /// Kept as one constant because the state blob inside it is long.
+    /// </summary>
+    internal const string MiniMaxCreateUrl =
+        "https://account.minimax.io/unified-login?login_redirect=%2Foauth2%2Fauthorize%3Fclient_id%3Dplatform-minimax"
+        + "%26redirect_uri%3Dhttps%253A%252F%252Fplatform.minimax.io%252Fauth%252Fcallback%26response_type%3Dcode"
+        + "%26state%3DeyJyZWRpcmVjdF91cmkiOiJodHRwczovL3BsYXRmb3JtLm1pbmltYXguaW8vY29uc29sZS9ob21lIiw"
+        + "iY3NyZiI6Ijg0ZGQzMGUzLTVmOGEtNDUxMi1iMWU0LTVlZmM3MDdiMzVlMCJ9";
+
+    /// <summary>
     /// The page a create run is driven to when the user has not typed one. accio
     /// previously had this hard-coded in the driver, which meant every operator
     /// created accounts on accio.com's own login page and nothing else.
@@ -220,8 +232,9 @@ public static class ToolSettingsStore
     public static string DefaultCreateUrl(string toolId) =>
         (toolId ?? "").ToLowerInvariant() switch
         {
-            "accio" => "https://www.accio.com/login",
-            _       => ""
+            "accio"          => "https://www.accio.com/login",
+            "tool4" or "minimax" => MiniMaxCreateUrl,
+            _                => ""
         };
 
     /// <summary>

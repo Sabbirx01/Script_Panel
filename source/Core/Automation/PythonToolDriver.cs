@@ -132,6 +132,18 @@ public sealed class PythonToolDriver : IToolDriver
         //    whenever the per-tool toggle is ON.
         var args = BuildArgs(settings.CreateArgTemplate, source, count, forceNoProxy, settings.Headless);
 
+        // SIGNUP URL for the tools that take one. MiniMax creates through the
+        // platform OAuth page now, and the operator can paste any replacement
+        // link on the Create tab (exactly like the accio box). Tools with no
+        // signup URL answer "" here, so nothing is appended for them and their
+        // create calls stay byte-for-byte what they were.
+        var createUrl = ToolSettingsStore.CreateUrl(ToolId);
+        if (!string.IsNullOrWhiteSpace(createUrl) && !args.Contains("--url"))
+        {
+            args.Add("--url");
+            args.Add(createUrl);
+        }
+
         // 3. Pick a stdin payload if the script is interactive (Zcreatev2 asks
         //    for the count with input()). Devin / non-interactive scripts can
         //    ignore this and just read from stdin; either way it's harmless.
@@ -557,6 +569,8 @@ public sealed class PythonToolDriver : IToolDriver
             {
                 keys["OUTLOOK_POOL_FILE"] = OutlookPoolService.PoolPath;
                 keys["OUTLOOK_POOL_MODE"] = "1";
+                keys["GMAIL_USER"] = "";
+                keys["GMAIL_APP_PASSWORD"] = "";
             }
 
             // For Temp Mail: don't write GMAIL_USER from the pool — that

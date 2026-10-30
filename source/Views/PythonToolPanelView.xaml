@@ -279,6 +279,35 @@
                         <RadioButton x:Name="ModeOutlook" GroupName="Mode" Margin="0,8,0,0" Style="{StaticResource S.RadioButton}"
                                      Content="8) Token Mail (Outlook pool — rotates, OTP read from the inbox)" />
 
+                        <!-- SIGNUP URL - the page this tool's create run is driven
+                             to, same box accio has. Only tools that actually take a
+                             URL on the create path show it (MiniMax today); for the
+                             others the whole block stays collapsed. -->
+                        <Border x:Name="CreateUrlSection" Background="#FF0B1220" BorderBrush="{StaticResource B.Line}" BorderThickness="1"
+                                CornerRadius="8" Padding="14,10" Margin="0,16,0,0" Visibility="Collapsed">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="🌐  SIGNUP URL:"
+                                               Style="{StaticResource T.Label}"
+                                               VerticalAlignment="Center" Margin="0,0,12,0" />
+
+                                    <TextBox Grid.Column="1" x:Name="CreateUrlBox"
+                                             Style="{StaticResource S.TextBox}"
+                                             FontFamily="{StaticResource F.Mono}"
+                                             LostFocus="OnCreateUrlChanged"
+                                             ToolTip="Where accounts of the next run are created. Any http(s) URL; empty = this tool's default page." />
+                                </Grid>
+                                <TextBlock x:Name="CreateUrlHint" Style="{StaticResource T.Mini}" Margin="0,6,0,0"
+                                           TextWrapping="Wrap"
+                                           Text="Passed to the create run as --url. Empty = the tool's default signup page." />
+                            </StackPanel>
+                        </Border>
+
                         <!-- proxy override -->
                         <Border Background="#FF0B1220" BorderBrush="{StaticResource B.Line}" BorderThickness="1"
                                 CornerRadius="8" Padding="14,10" Margin="0,16,0,0">

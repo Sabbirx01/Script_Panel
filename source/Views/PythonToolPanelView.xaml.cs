@@ -88,6 +88,7 @@ public partial class PythonToolPanelView : UserControl
         ReloadLoginRows();
         RefreshMailBanList();
         ApplyExtraTabToolShape();
+        LoadCreateUrlFromSettings();
 
         // Set proxy toggle default AFTER siblings are wired - same XAML-load
         // gotcha that bit AccioPanelView first time around.
@@ -1939,6 +1940,51 @@ public partial class PythonToolPanelView : UserControl
 
         if (willBan && MailRouter.AllGmailsBanned(_toolId))
             AppendLog($"⚠ Every Gmail is now BANNED for {_toolId} — add one back in Settings → MAIL to keep creating accounts.");
+    }
+
+    // ------------------------------------------------------- signup URL (create)
+
+    /// <summary>
+    /// Shows the SIGNUP URL box only for tools that take one on the create path
+    /// (MiniMax: its platform unified-login page) and renders the effective value
+    /// - the saved per-tool URL or that tool's built-in default - so the operator
+    /// always sees the page the next run will open.
+    /// </summary>
+    private void LoadCreateUrlFromSettings()
+    {
+        if (CreateUrlSection is null || CreateUrlBox is null) return;
+
+        var supported = !string.IsNullOrWhiteSpace(ToolSettingsStore.DefaultCreateUrl(_toolId));
+        CreateUrlSection.Visibility = supported ? Visibility.Visible : Visibility.Collapsed;
+        if (!supported) return;
+
+        var url = ToolSettingsStore.CreateUrl(_toolId);
+        CreateUrlBox.Text = url;
+
+        if (CreateUrlHint is not null)
+        {
+            CreateUrlHint.Text = $"Create run opens:  {url}   (passed as  --url)" +
+                (ToolSettingsStore.For(_toolId).CreateUrl is null ? "   [default]" : "   [saved for this tool]");
+        }
+    }
+
+    /// <summary>
+    /// Persists the SIGNUP URL when the operator leaves the box, so the next run -
+    /// and the next launch of the panel - opens the same page. Empty input snaps
+    /// back to the tool's default instead of leaving the box blank.
+    /// </summary>
+    private void OnCreateUrlChanged(object sender, RoutedEventArgs e)
+    {
+        if (CreateUrlBox is null) return;
+
+        var before = ToolSettingsStore.CreateUrl(_toolId);
+        ToolSettingsStore.SetCreateUrl(_toolId, CreateUrlBox.Text);
+        var after = ToolSettingsStore.CreateUrl(_toolId);
+
+        LoadCreateUrlFromSettings();
+
+        if (!string.Equals(before, after, StringComparison.OrdinalIgnoreCase))
+            AppendLog($"Signup URL for create runs → {after}");
     }
 
     // ----------------------------------------------------------------- settings tab
