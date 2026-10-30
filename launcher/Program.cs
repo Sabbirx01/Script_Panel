@@ -233,11 +233,19 @@ internal static class Program
             ExtractTo(tempZip, staging, form);
 
             // A previous install's accounts / licence / settings must survive.
-            string oldData = Path.Combine(target, "data");
-            if (Directory.Exists(oldData))
+            //
+            // data\ holds the licence, settings and the per-tool workspaces, and
+            // accounts\ holds every created account (accounts.json, cookies.txt,
+            // the tool's .env). Copying data\ alone - which is what this did -
+            // meant an upgrade threw the customer's accounts away: the old folder
+            // is deleted right after the swap, so there was nothing left to
+            // recover them from.
+            foreach (var keep in new[] { "data", "accounts" })
             {
+                string old = Path.Combine(target, keep);
+                if (!Directory.Exists(old)) continue;
                 form.Report("Keeping your saved accounts", 0, 1);
-                CopyDirectory(oldData, Path.Combine(staging, "data"));
+                CopyDirectory(old, Path.Combine(staging, keep));
             }
 
             File.WriteAllText(Path.Combine(staging, VersionEntry), ReadPayloadVersion());
