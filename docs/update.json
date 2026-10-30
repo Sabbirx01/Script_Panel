@@ -1,9 +1,9 @@
 {
-  "version": "2.2",
-  "tag": "v2.2",
-  "published": "2026-10-27T03:43:51Z",
-  "notes": "Method 5 - Token Mail: an Outlook mailbox pool (email|password|refresh_token|client_id) whose verification code is read straight out of the inbox over IMAP, with Graph as fallback. Pasted and managed from Global Settings, one radio option in every tool panel, rotation per tool. Dotted aliases are opt-in because a mailbox that ignores dots never delivers the code.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2/DeveloperXBulkAccPanel-v2.2.zip",
-  "sha256": "4dc9f062d19591436599651e5ffffdf1d3c7cb3cee64447fc725496cd966d2f8",
-  "size": 129655191
+  "version": "2.2.1",
+  "tag": "v2.2.1",
+  "published": "2026-10-30T15:10:35Z",
+  "notes": "MiniMax create runs now open a configurable SIGNUP URL (default: the platform unified-login page), saved per tool and passed to the create script. The one-file setup also keeps the accounts folder, not just data, when it upgrades an existing install.",
+  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.1/DeveloperXBulkAccPanel-v2.2.1.zip",
+  "sha256": "f98a0a7bca7474e3be19b789c29bca1f99ac31de09739d1106d7a44e9f7e473f",
+  "size": 129656169
 }
