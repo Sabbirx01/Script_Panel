@@ -1510,6 +1510,12 @@ public partial class PythonToolPanelView : UserControl
             return;
         }
 
+        // The URL box is the tool's create entry point now: persist whatever is
+        // in it before the run starts, so a value typed and then submitted with
+        // the keyboard (no LostFocus) still reaches the script instead of
+        // silently falling back to the default page.
+        SaveCreateUrlBeforeRun();
+
         ProgressText.Text = $"00 / {qty:00}";
         Progress.Value = 0;
         ProgressPanel.Visibility = Visibility.Visible;
@@ -1985,6 +1991,26 @@ public partial class PythonToolPanelView : UserControl
 
         if (!string.Equals(before, after, StringComparison.OrdinalIgnoreCase))
             AppendLog($"Signup URL for create runs → {after}");
+    }
+
+    /// <summary>
+    /// Called at the start of every run: writes the box back to the tool settings
+    /// if it differs from what is stored. LostFocus covers the mouse path; this
+    /// covers a value typed and then submitted straight with Enter, where focus
+    /// never leaves the box before the run is already reading the settings.
+    /// </summary>
+    private void SaveCreateUrlBeforeRun()
+    {
+        if (CreateUrlBox is null || CreateUrlSection?.Visibility != Visibility.Visible) return;
+        if (string.IsNullOrWhiteSpace(CreateUrlBox.Text)) return;
+
+        var stored = ToolSettingsStore.CreateUrl(_toolId);
+        if (string.Equals(CreateUrlBox.Text.Trim(), stored, StringComparison.OrdinalIgnoreCase)) return;
+
+        ToolSettingsStore.SetCreateUrl(_toolId, CreateUrlBox.Text);
+        var after = ToolSettingsStore.CreateUrl(_toolId);
+        AppendLog($"Signup URL saved before run → {after}");
+        LoadCreateUrlFromSettings();
     }
 
     // ----------------------------------------------------------------- settings tab
