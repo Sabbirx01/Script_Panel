@@ -1,9 +1,9 @@
 {
-  "version": "2.2.1",
-  "tag": "v2.2.1",
-  "published": "2026-10-30T15:10:35Z",
-  "notes": "MiniMax create runs now open a configurable SIGNUP URL (default: the platform unified-login page), saved per tool and passed to the create script. The one-file setup also keeps the accounts folder, not just data, when it upgrades an existing install.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.1/DeveloperXBulkAccPanel-v2.2.1.zip",
-  "sha256": "f98a0a7bca7474e3be19b789c29bca1f99ac31de09739d1106d7a44e9f7e473f",
-  "size": 129656169
+  "version": "2.2.2",
+  "tag": "v2.2.2",
+  "published": "2026-10-31T06:59:22Z",
+  "notes": "MiniMax create now opens the SIGNUP URL from the Create tab directly - no minimax.io landing page and no Login click - then fills the allocated mail and runs the rest of the signup flow. The panel also saves a typed signup URL before every run, so it can no longer fall back to the default page.",
+  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.2/DeveloperXBulkAccPanel-v2.2.2.zip",
+  "sha256": "79959dd692002263827e1e4bff2313b9f928eb9f9b07b1d124da8096e0d9f2dd",
+  "size": 129656347
 }
