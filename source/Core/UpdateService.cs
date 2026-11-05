@@ -267,7 +267,23 @@ internal static class UpdateService
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
-            if (!LicenseService.IsActivated || !Configured) return;
+            if (!Configured) return;
+
+            // The licence is NOT always ready when the panel opens. The startup
+            // revalidation is an ONLINE call, so one slow answer - or a DNS blip
+            // on a machine that has just booted - leaves the panel sitting on
+            // the activation screen with IsActivated false. This check runs ONCE
+            // at startup, so giving up here meant the customer had to find the
+            // UPDATE button by themselves, or never received the new build at
+            // all while the panel quietly kept offering the old one.
+            //
+            // Wait for the licence instead of giving up: a customer who types
+            // their key a moment later is still updated, silently.
+            for (var i = 0; i < 30 && !LicenseService.IsActivated; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+            }
+            if (!LicenseService.IsActivated) return;
 
             _autoRunning = true;
             var result = await CheckAsync(ct).ConfigureAwait(false);
@@ -403,6 +419,27 @@ internal static class UpdateService
 
             var text = await Http.GetStringAsync(BaseUrl + "manifest.json", ct).ConfigureAwait(false);
             manifest = System.Text.Json.JsonSerializer.Deserialize<Manifest>(text, Json.Options) ?? new Manifest();
+
+            // A feed that answers but is STALE must not be used. The retired
+            // custom-manifest server still serves 1.1.0, so a customer sitting on
+            // 1.2.0 saw "nothing newer" and stayed on the old build for ever - and
+            // because the file list still names an exe with a DIFFERENT hash,
+            // installing it would have DOWNGRADED them to 1.1.0. A feed offering
+            // an older build than the one already installed is not proof that no
+            // update exists, so the GitHub release feed gets a say instead.
+            if (!IsGitHubFeed)
+            {
+                var installed = ParseVersion(current);
+                if (ParseVersion(manifest.Version) < installed)
+                {
+                    Log.Warn("", "The configured update feed is stale (it serves " +
+                                manifest.Version + ", this machine runs " + current +
+                                ") - used the GitHub release feed instead.");
+                    var fallback = await TryStaticFeedResultAsync(current, ct).ConfigureAwait(false);
+                    if (fallback is not null) return fallback;
+                }
+            }
+
             var changed = new List<ManifestFile>();
             foreach (var file in manifest.Files)
             {
@@ -416,8 +453,69 @@ internal static class UpdateService
         }
         catch (Exception ex)
         {
+            // The feed this machine was pointed at is not answering. That must
+            // not strand the customer on an old build: fall back to the GitHub
+            // release feed, which is where the releases actually live. Without
+            // this, a customer whose settings still name the retired custom
+            // manifest URL got "no update" for ever and had no way to tell the
+            // panel apart from a server that simply had nothing new.
+            if (!IsGitHubFeed)
+            {
+                try
+                {
+                    var fallback = await TryStaticFeedResultAsync(current, ct).ConfigureAwait(false);
+                    if (fallback is not null)
+                    {
+                        Log.Warn("", "The configured update feed failed (" + ex.Message +
+                                    ") — used the GitHub release feed instead.");
+                        return fallback;
+                    }
+                }
+                catch { /* the original error is the one worth reporting */ }
+            }
             return new CheckResult { Ok = false, CurrentVersion = current, Error = ex.Message };
         }
+    }
+
+    /// <summary>
+    /// The CDN release feed as a CheckResult, or null when the feed is missing
+    /// or offers nothing newer than what is installed.
+    ///
+    /// <para>Used as the fallback for a machine whose configured feed has gone
+    /// away. The custom-manifest URL written by the old
+    /// <c>set_update_url.py</c> points at a server that no longer answers, and
+    /// without this the customer sits on an old build for ever with no way to
+    /// tell why - the check simply reports a failure and the panel carries on
+    /// as if there were no update at all.</para>
+    /// </summary>
+    private static async Task<CheckResult?> TryStaticFeedResultAsync(string current, CancellationToken ct)
+    {
+        var feed = await TryStaticFeedAsync(ct).ConfigureAwait(false);
+        if (feed is null) return null;
+
+        var installed = ParseVersion(current);
+        var available = ParseVersion(feed.Version);
+        if (available <= installed)
+            return new CheckResult
+            {
+                Ok = true, CurrentVersion = current,
+                AvailableVersion = feed.Version, Notes = feed.Notes
+            };
+
+        var packageFile = new ManifestFile
+        {
+            Path = "DeveloperXBulkAccPanel.exe",
+            Size = feed.Size,
+            Sha256 = feed.PackageSha256,
+            PackageUrl = feed.PackageUrl,
+            HashUrl = feed.HashUrl,
+            Target = "package"
+        };
+        return new CheckResult
+        {
+            Ok = true, CurrentVersion = current, AvailableVersion = feed.Version,
+            Notes = feed.Notes, Changed = new[] { packageFile }, ChangedBytes = feed.Size
+        };
     }
 
     private static Version ParseVersion(string value)

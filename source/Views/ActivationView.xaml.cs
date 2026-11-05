@@ -134,6 +134,12 @@ public partial class ActivationView : UserControl
         SetStatus("Status: License Activated", StatusKind.Ok);
         RecolorBadge(true);
 
+        // The licence only became valid NOW. The startup update check ran before
+        // this key was entered, found no licence, and gave up - so a customer
+        // who activates by hand was left on the old build with no automatic
+        // update at all. Check again now that the licence is valid.
+        _ = UpdateService.AutoInstallAsync();
+
         await Task.Delay(650);
         Nav.GoDashboard();
     }
