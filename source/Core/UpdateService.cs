@@ -556,7 +556,17 @@ internal static class UpdateService
                 var installed = ParseVersion(current);
                 var available = ParseVersion(manifest.Version);
                 if (available <= installed)
-                    return new CheckResult { Ok = true, CurrentVersion = current, AvailableVersion = manifest.Version, Notes = manifest.Notes };
+                {
+                    // The bundle facts have to survive this branch too: the tools
+                    // fingerprint is compared here, on a panel that is otherwise
+                    // fully up to date. Dropping it made a tool fix invisible.
+                    return new CheckResult
+                    {
+                        Ok = true, CurrentVersion = current, AvailableVersion = manifest.Version, Notes = manifest.Notes,
+                        BundleTools = feed.BundleTools, SetupUrl = feed.SetupUrl,
+                        SetupSha256 = feed.SetupSha256, SetupSize = feed.SetupSize
+                    };
+                }
 
                 var packageFile = new ManifestFile
                 {
