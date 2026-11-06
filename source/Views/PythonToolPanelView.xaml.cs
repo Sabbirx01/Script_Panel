@@ -1607,8 +1607,23 @@ public partial class PythonToolPanelView : UserControl
                     addr.Address, mode, AppendLog, ct,
                     forceNoProxy, 1).ConfigureAwait(false);
 
-                if (result.Ok) Interlocked.Increment(ref done);
-                else Interlocked.Increment(ref failed);
+                if (result.Ok)
+                {
+                    Interlocked.Increment(ref done);
+                }
+                else
+                {
+                    Interlocked.Increment(ref failed);
+                    // A driver that fails before it starts streaming anything used
+                    // to leave the customer with "created: 0 failed: 1" and no
+                    // reason at all. Print the verdict; skip it when the driver
+                    // already streamed the same sentence into the box.
+                    if (!string.IsNullOrWhiteSpace(result.Message) &&
+                        !string.Equals(result.Message, _lastLogLine, StringComparison.Ordinal))
+                    {
+                        AppendLog("✗ " + result.Message);
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -1809,8 +1824,13 @@ public partial class PythonToolPanelView : UserControl
         await Task.CompletedTask;
     }
 
+    /// <summary>Last line handed to <see cref="AppendLog"/>, so a failure
+    /// verdict the driver already streamed is not printed twice.</summary>
+    private string _lastLogLine = "";
+
     private void AppendLog(string line)
     {
+        _lastLogLine = line;
         Dispatcher.Invoke(() =>
         {
             var current = LogBox.Text;

@@ -100,7 +100,16 @@ public sealed class PythonToolDriver : IToolDriver
     {
         var settings = Settings;
         var validation = Validate(settings, wantLogin: false);
-        if (validation is not null) return validation;
+        if (validation is not null)
+        {
+            // The reason used to go nowhere: the run log printed "created: 0
+            // failed: 1" and nothing else, which reads as a broken tool rather
+            // than "this folder has no tool scripts in it". Every caller now
+            // gets the sentence, and it is in the log file too.
+            Log.Warn(ToolId, validation.Message);
+            liveLog?.Invoke("✗ " + validation.Message);
+            return validation;
+        }
 
         var script = settings.CreateScriptPath!;
         var workDir = settings.ToolWorkingDirectory!;
@@ -172,7 +181,11 @@ public sealed class PythonToolDriver : IToolDriver
     {
         var settings = Settings;
         var validation = Validate(settings, wantLogin: true);
-        if (validation is not null) return validation;
+        if (validation is not null)
+        {
+            Log.Warn(ToolId, validation.Message);
+            return validation;
+        }
 
         var script = settings.LoginScriptPath!;
         var workDir = settings.ToolWorkingDirectory!;
@@ -293,14 +306,29 @@ public sealed class PythonToolDriver : IToolDriver
     {
         if (string.IsNullOrWhiteSpace(s.PythonExePath) && !PythonOnPath())
             return DriverResult.Fail(
-                "Python interpreter not found. Set ToolSettings.PythonExePath in Global " +
-                "Settings → Tool Paths, or add python.exe to PATH.");
+                !Directory.Exists(Path.Combine(AppPaths.AppRoot, "runtime"))
+                    ? "Python interpreter not found: this panel has no runtime\\ folder, so it was installed " +
+                      "from the update ZIP. Close the panel and run DeveloperXPanel-Setup.exe from the download " +
+                      "page to install the full package."
+                    : "Python interpreter not found. Set ToolSettings.PythonExePath in Global " +
+                      "Settings → Tool Paths, or add python.exe to PATH.");
 
         var script = wantLogin ? s.LoginScriptPath : s.CreateScriptPath;
         if (string.IsNullOrWhiteSpace(script) || !File.Exists(script))
+        {
+            // The download page used to hand out the update ZIP, which carries
+            // the panel exe only - no tools\, no runtime\. A panel installed from
+            // that archive looks completely normal and fails every run here, so
+            // say what actually fixes it instead of pointing at a settings box
+            // the customer has no reason to open.
+            var looksUpdateOnly = !Directory.Exists(Path.Combine(AppPaths.AppRoot, "tools"));
             return DriverResult.Fail(
                 $"{(wantLogin ? "Login" : "Create")} script not found at: {script ?? "(empty)"}  " +
-                "Set it in Global Settings → Tool Paths.");
+                (looksUpdateOnly
+                    ? "This PC has the panel without its tool files - it was installed from the update ZIP. " +
+                      "Close the panel and run DeveloperXPanel-Setup.exe from the download page to install the full package."
+                    : "Set it in Global Settings → Tool Paths."));
+        }
 
         if (string.IsNullOrWhiteSpace(s.ToolWorkingDirectory) || !Directory.Exists(s.ToolWorkingDirectory))
             return DriverResult.Fail(
