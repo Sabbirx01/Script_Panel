@@ -1,9 +1,1 @@
-{
-  "version": "2.2.2",
-  "tag": "v2.2.2",
-  "published": "2026-10-31T06:59:22Z",
-  "notes": "MiniMax create now opens the SIGNUP URL from the Create tab directly - no minimax.io landing page and no Login click - then fills the allocated mail and runs the rest of the signup flow. The panel also saves a typed signup URL before every run, so it can no longer fall back to the default page.",
-  "packageUrl": "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.2/DeveloperXBulkAccPanel-v2.2.2.zip",
-  "sha256": "79959dd692002263827e1e4bff2313b9f928eb9f9b07b1d124da8096e0d9f2dd",
-  "size": 129656347
-}
+{"version":"2.2.4","tag":"v2.2.4","published":"2026-11-06T07:25:51Z","notes":"Developer X Bulk Acc Panel v2.2.4","packageUrl":"https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.4/DeveloperXBulkAccPanel-v2.2.4.zip","sha256":"ccfc25efd48a0b2a4494b638ef72aa1cf3b22fe0f4cd38a082240a8005e93cf2","size":129657862}
