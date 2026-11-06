@@ -1,13 +1,1 @@
-﻿{
-    "version":  "2.2.8",
-    "tag":  "v2.2.8",
-    "published":  "2026-11-06T10:46:14Z",
-    "notes":  "Developer X Bulk Acc Panel v2.2.8",
-    "packageUrl":  "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.8/DeveloperXBulkAccPanel-v2.2.8.zip",
-    "sha256":  "029b54ba511da6d4a2fdb9ec66e4fae654ff985957e063d536f4181dc808f6b4",
-    "size":  129665487,
-    "setupUrl":  "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.8/DeveloperXPanel-Setup.exe",
-    "setupSha256":  "00b75df7635c312d98bc175123d5298f60f05631f9db7345fd0f8c8cf1926c94",
-    "setupSize":  625098118,
-    "bundleTools":  "dbce97cf4846503a0c3fd70abb1463b032a0cd889e9d1492e4cce005d0d45117"
-}
+{"version":"2.2.9","tag":"v2.2.9","published":"2026-11-06T11:22:17Z","notes":"Developer X Bulk Acc Panel v2.2.9","packageUrl":"https://github.com/Sabbirx01/Script_Panel/releases/download/v2.2.9/DeveloperXBulkAccPanel-v2.2.9.zip","sha256":"ec73b43edfa902e6d6abf4d7977c8399425299b7a237c8ec0a388a5312a98752","size":129667012}
