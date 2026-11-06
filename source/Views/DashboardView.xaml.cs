@@ -31,7 +31,21 @@ public partial class DashboardView : UserControl
         Unloaded += (_, _) => ToolLicenseService.Changed -= OnToolLicenceChanged;
         UpdateService.StartupChecked += OnStartupUpdateChecked;
         Unloaded += (_, _) => UpdateService.StartupChecked -= OnStartupUpdateChecked;
+
+        // An install made from the update ZIP has no tool files; the repair
+        // reports its progress here so the customer sees why the panel is
+        // downloading ~600 MB instead of being surprised by it.
+        SelfRepair.Status += OnRepairStatus;
+        Unloaded += (_, _) => SelfRepair.Status -= OnRepairStatus;
     }
+
+    private void OnRepairStatus(string title, string detail) =>
+        Dispatcher.Invoke(() =>
+        {
+            UpdateBanner.Visibility = Visibility.Visible;
+            UpdateBannerText.Text = title;
+            UpdateBannerNote.Text = detail;
+        });
 
     private void OnVaultChanged(string toolId) =>
         Dispatcher.Invoke((Action)ToolCatalog.RefreshCookieCounts);

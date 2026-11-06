@@ -89,10 +89,21 @@ public partial class App : Application
             Current.Show();
         }
 
+        // A copy installed from the update ZIP has the panel but none of its
+        // tools. Nothing that copy can download would fix that - the updater
+        // swaps one exe - so the panel fetches the one-file Setup itself and
+        // hands over to it. Runs before the update check: there is no point
+        // updating a copy that cannot run a tool.
+        _ = SelfRepair.RunAsync();
+
         // Silent, click-free updates: download, verify and swap in the new build
         // in the background; it takes effect on the next launch. The manual
         // CHECK NOW / INSTALL UPDATE buttons stay as the fallback.
-        _ = UpdateService.AutoInstallAsync();
+        //
+        // Skipped while the copy is incomplete: the repair is fetching the full
+        // installer, and swapping the exe under it would only add a second
+        // 124 MB download for no benefit.
+        if (!SelfRepair.NeedsRepair) _ = UpdateService.AutoInstallAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)

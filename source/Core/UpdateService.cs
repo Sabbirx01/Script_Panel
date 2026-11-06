@@ -182,6 +182,18 @@ internal static class UpdateService
         };
     }
 
+    /// <summary>
+    /// Download URL of the one-file encrypted setup for the newest release.
+    /// Used by <see cref="SelfRepair"/>: the updater's zip carries the panel exe
+    /// only, so a copy installed from it can only be completed by the setup.
+    /// </summary>
+    public static async Task<string?> LatestSetupUrlAsync(CancellationToken ct = default)
+    {
+        var tag = await TryLatestTagAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+        return $"https://github.com/{GitHubRepo}/releases/download/{tag}/DeveloperXPanel-Setup.exe";
+    }
+
     /// <summary>Content-Length of an asset, 0 when it cannot be read (display only).</summary>
     private static async Task<long> TryHeadSizeAsync(string url, CancellationToken ct)
     {
