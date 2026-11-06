@@ -171,7 +171,9 @@ if (-not $SkipSetupUpload) {
     $feedJson | Add-Member -NotePropertyName setupSha256 -NotePropertyValue $setupHash -Force
     $feedJson | Add-Member -NotePropertyName setupSize -NotePropertyValue ((Get-Item -LiteralPath $setup).Length) -Force
     $feedJson | Add-Member -NotePropertyName bundleTools -NotePropertyValue $info.toolsSha256 -Force
-    $feedJson | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $feedPath -Encoding UTF8
+    # PS 5.1 "UTF8" prepends a BOM; a BOM inside JSON is a needless trap for
+# every other consumer, so write the bytes ourselves.
+[IO.File]::WriteAllText($feedPath, ($feedJson | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
 
     & git -C $root add docs/update.json
     & git -C $root commit -m ("release: full package for " + $tag + " (tools " + $info.toolsSha256.Substring(0, 12) + ")") 2>&1 | Out-Null
