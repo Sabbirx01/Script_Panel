@@ -89,10 +89,18 @@ temp/*
 # build-portable.ps1 decides exactly what ships to a customer, including the
 # credential/state exclusion list - it has to be versioned alongside it.
 !temp/build-portable.ps1
+# The one-command release: build -> encrypt -> tag -> release -> verify that the
+# CDN feed actually names the new version. If this is not in the repo the feed
+# step is forgotten again, which is what stranded v2.2.3.
+!temp/publish-release.ps1
 
 # Local backups and probes
 _archive/
 _backups/
+# Staging copies of a release tree (a .playwright bundle lives in here, ~1000
+# files); a "git add -A" once tried to push it.
+_preview/
+.vscode/
 *.log
 *.tmp
 *.bak

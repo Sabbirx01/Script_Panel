@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -117,12 +118,94 @@ internal static class UpdateService
     /// </summary>
     private const string StaticFeedUrl = "https://sabbirx01.github.io/Script_Panel/update.json";
 
+    /// <summary>A release tag that is a panel version: v2.2.4, 2.2.4, 2.2.4.1.</summary>
+    private static readonly Regex VersionTag = new(@"^[vV]?\d+(\.\d+){1,3}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Tag of the newest published release, read from the redirect GitHub
+    /// serves for <c>/releases/latest</c>.
+    ///
+    /// <para>This exists because <c>update.json</c> is written by hand after a
+    /// release and has gone stale: v2.2.3 was published while the feed still
+    /// named 2.2.2, so every installed panel compared 2.2.2 with 2.2.2,
+    /// concluded it was up to date and never moved again - the customer sees
+    /// "auto-update does not work" and nothing is logged.</para>
+    ///
+    /// <para>Unlike <c>api.github.com</c> (60 unauthenticated requests per hour
+    /// per IP) this endpoint is a plain CDN redirect with no quota, so it is
+    /// safe to ask on every check. Returns null when the newest release is not
+    /// a panel build - the repository also publishes
+    /// <c>minimax-code-3.0.67</c>, which must never be mistaken for one.</para>
+    /// </summary>
+    private static async Task<string?> TryLatestTagAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var handler = new SocketsHttpHandler { AllowAutoRedirect = false };
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get, "https://github.com/" + GitHubRepo + "/releases/latest");
+            request.Headers.UserAgent.ParseAdd("DeveloperXBulkAccPanel/2.2");
+
+            using var response = await client
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+            var location = response.Headers.Location;
+            if (location is null) return null;
+
+            var path = location.IsAbsoluteUri ? location.AbsolutePath : location.OriginalString;
+            var tag = path.TrimEnd('/').Split('/').LastOrDefault() ?? "";
+            return VersionTag.IsMatch(tag) ? tag : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A feed entry for a release tag, using the asset names the release
+    /// workflow has produced since v1.1.7. The hash is not invented: it is
+    /// fetched from the <c>.zip.sha256</c> asset next to the package, which is
+    /// exactly the file <see cref="InstallGitHubPackageAsync"/> already reads
+    /// when the feed carries no digest.
+    /// </summary>
+    private static FeedInfo FeedForTag(string tag)
+    {
+        var zip = $"https://github.com/{GitHubRepo}/releases/download/{tag}/DeveloperXBulkAccPanel-{tag}.zip";
+        return new FeedInfo
+        {
+            Version = tag.TrimStart('v', 'V'),
+            PackageUrl = zip,
+            HashUrl = zip + ".sha256",
+            Notes = "Release " + tag
+        };
+    }
+
+    /// <summary>Content-Length of an asset, 0 when it cannot be read (display only).</summary>
+    private static async Task<long> TryHeadSizeAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, url);
+            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            return response.Content.Headers.ContentLength ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     /// <summary>Reads the static feed; null means "not there, use the GitHub API".</summary>
     private static async Task<FeedInfo?> TryStaticFeedAsync(CancellationToken ct)
     {
         try
         {
-            using var response = await Http.GetAsync(StaticFeedUrl, ct).ConfigureAwait(false);
+            // Cache-busted: Pages/CDN copies of update.json were served up to
+            // ten minutes stale, and a stale answer here reads as "no update".
+            var url = StaticFeedUrl + "?t=" + DateTime.UtcNow.Ticks.ToString();
+            using var response = await Http.GetAsync(url, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return null;
 
             var feed = System.Text.Json.JsonSerializer.Deserialize<StaticFeed>(
@@ -179,19 +262,30 @@ internal static class UpdateService
     {
         get
         {
+            var assembly = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
             try
             {
                 if (File.Exists(InstalledVersionFile))
                 {
                     var text = File.ReadAllText(InstalledVersionFile).Trim();
-                    if (text.Length > 0) return text;
+                    if (text.Length > 0)
+                    {
+                        // The file records what the server published; the assembly
+                        // records what is actually running. Trusting the file on its
+                        // own breaks in both directions: a Setup.exe upgrade leaves a
+                        // LOWER number behind (the panel then re-downloads the same
+                        // 124 MB on every start), and a swapped-in update leaves a
+                        // HIGHER one behind while the old image still runs. The
+                        // higher of the two is correct in both cases.
+                        return ParseVersion(text) >= ParseVersion(assembly) ? text : assembly;
+                    }
                 }
             }
             catch
             {
                 // fall through to the assembly version
             }
-            return typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+            return assembly;
         }
     }
 
@@ -344,6 +438,29 @@ internal static class UpdateService
                 // "403 (rate limit exceeded)". Pages is a CDN and has no such cap.
                 var feed = await TryStaticFeedAsync(ct).ConfigureAwait(false);
 
+                // Cross-check the feed against the newest published tag. The
+                // feed is the fast path, not the source of truth: when it lags
+                // behind the releases - which is exactly what happened between
+                // v2.2.2 and v2.2.3 - a panel that trusts it alone answers
+                // "up to date" for ever and the customer never receives a fix.
+                var latestTag = await TryLatestTagAsync(ct).ConfigureAwait(false);
+                if (latestTag is not null &&
+                    (feed is null || ParseVersion(latestTag) > ParseVersion(feed.Version)))
+                {
+                    var fromTag = FeedForTag(latestTag);
+                    if (feed is not null)
+                    {
+                        fromTag.Notes = feed.Notes;
+                        fromTag.Published = feed.Published;
+                    }
+                    Log.Info("", "The update feed is behind the newest release (" + latestTag +
+                                 ") - using the release itself.");
+                    feed = fromTag;
+                    // The banner reads "N MB download"; a tag-only entry has no
+                    // size until the asset answers a HEAD request.
+                    if (feed.Size <= 0) feed.Size = await TryHeadSizeAsync(feed.PackageUrl, ct).ConfigureAwait(false);
+                }
+
                 if (feed is null)
                 {
                     using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiUrl);
@@ -365,6 +482,11 @@ internal static class UpdateService
                         ?? new GitHubRelease();
                     if (release.Draft || release.Prerelease || string.IsNullOrWhiteSpace(release.TagName))
                         return new CheckResult { Ok = false, CurrentVersion = current, Error = "No stable GitHub release is available." };
+                    // Same guard as the redirect probe: the repo also publishes
+                    // non-panel releases (minimax-code-3.0.67), and installing one
+                    // of those would put a completely different exe in place.
+                    if (!VersionTag.IsMatch(release.TagName))
+                        return new CheckResult { Ok = false, CurrentVersion = current, Error = "No stable panel release is available." };
 
                     var package = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
                     var signature = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase));
@@ -783,7 +905,14 @@ internal static class UpdateService
             if (string.IsNullOrWhiteSpace(expected) && !string.IsNullOrWhiteSpace(package.HashUrl))
             {
                 var hashText = await Http.GetStringAsync(package.HashUrl, ct).ConfigureAwait(false);
-                expected = hashText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                // The release publishes this file as "sha256:<hex>", so a bare
+                // 64-character token does not exist in it. Stripping the prefix
+                // first is what makes the check pass: without it every download
+                // was rejected as "hash mismatch - nothing was changed", and the
+                // panel silently stayed on its old build.
+                expected = hashText
+                    .Replace("sha256:", "", StringComparison.OrdinalIgnoreCase)
+                    .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                     .FirstOrDefault(x => x.Length == 64 && x.All(Uri.IsHexDigit)) ?? "";
             }
             if (!HashMatches(tempZip, expected))

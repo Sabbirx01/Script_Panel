@@ -77,3 +77,61 @@ jobs:
           files: |
             ${{ env.OUT }}/*.zip
             ${{ env.OUT }}/*.sha256
+
+      # The release used to say "publish update.json afterwards" and that step
+      # kept being missed: v2.2.3 shipped while docs/update.json still named
+      # 2.2.2, so every installed panel compared 2.2.2 with 2.2.2 and reported
+      # "up to date" for ever. The feed and the download page are now written by
+      # the release that creates the assets, from the digest of the zip this
+      # workflow just built - there is nothing left to remember.
+      - name: Publish the update feed and download page
+        if: success()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $v = $env:VERSION
+          $plain = if ($v.StartsWith('v')) { $v.Substring(1) } else { $v }
+          $tag = $env:TAG
+          $zip = $env:ZIP
+          $hash = $env:HASH
+          $size = (Get-Item $zip).Length
+          $url = "https://github.com/Sabbirx01/Script_Panel/releases/download/$tag/DeveloperXBulkAccPanel-$tag.zip"
+          $notes = '${{ inputs.notes }}'
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "Developer X Bulk Acc Panel $tag" }
+
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+          $feed = [ordered]@{
+            version    = $plain
+            tag        = $tag
+            published  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            notes      = $notes
+            packageUrl = $url
+            sha256     = $hash
+            size       = $size
+          }
+          $feed | ConvertTo-Json -Compress | Set-Content -LiteralPath 'docs/update.json' -Encoding utf8 -NoNewline
+
+          # The page's offline fallback still has to name the newest file, or a
+          # customer whose feed and API call both fail is offered the old zip.
+          $html = Get-Content -LiteralPath 'docs/index.html' -Raw
+          $pattern = "fallback:\{tag:'[^']*',name:'[^']*',size:\d+,url:'[^']*',digest:'[^']*'\}"
+          $replacement = "fallback:{tag:'$tag',name:'DeveloperXBulkAccPanel-$tag.zip',size:$size,url:'$url',digest:'sha256:$hash'}"
+          if ($html -match $pattern) {
+            $html = [regex]::Replace($html, $pattern, $replacement)
+            Set-Content -LiteralPath 'docs/index.html' -Value $html -Encoding utf8 -NoNewline
+          } else {
+            Write-Warning 'docs/index.html fallback block not found - left unchanged'
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/update.json docs/index.html
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "release: point the update feed at $plain [skip ci]"
+            git push origin main
+          } else {
+            Write-Host 'feed already current'
+          }
