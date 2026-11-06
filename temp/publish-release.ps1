@@ -140,8 +140,14 @@ if ($LASTEXITCODE -ne 0) {
 if (-not $SkipSetupUpload) {
     Step 4 'uploading the encrypted one-file setup'
     & gh release upload $tag $setup "$setup.sha256" --repo $repo --clobber
-    if ($LASTEXITCODE -ne 0) { Warn2 'setup upload failed (the release itself is fine)' }
-    else { Ok ((Split-Path $setup -Leaf) + ' attached') }
+    if ($LASTEXITCODE -ne 0) { throw 'setup upload failed - the download page now offers Setup.exe first, so a missing asset is a 404 for every new customer' }
+
+    # The page's primary button is this exact asset. Prove it is there instead
+    # of assuming the upload landed.
+    $setupUrl = "https://github.com/$repo/releases/download/$tag/DeveloperXPanel-Setup.exe"
+    $head = Invoke-WebRequest -Uri $setupUrl -Method Head -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 60
+    if ($head.StatusCode -ne 200) { throw "the uploaded Setup.exe is not downloadable ($($head.StatusCode))" }
+    Ok ((Split-Path $setup -Leaf) + ' attached and downloadable')
 } else {
     Step 4 'skipping setup upload (-SkipSetupUpload)'
 }
