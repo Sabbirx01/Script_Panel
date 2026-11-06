@@ -17,6 +17,10 @@ on:
 
 permissions:
   contents: write
+  # Needed to kick pages.yml: a push made with GITHUB_TOKEN does NOT trigger
+  # other workflows, so the feed commit alone left GitHub Pages serving the
+  # previous update.json - the same "no update" the commit was meant to fix.
+  actions: write
 
 env:
   DOTNET_VERSION: '10.0.x'
@@ -135,3 +139,11 @@ jobs:
           } else {
             Write-Host 'feed already current'
           }
+
+      - name: Deploy the refreshed download page
+        if: success()
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo ${{ github.repository }} --ref main

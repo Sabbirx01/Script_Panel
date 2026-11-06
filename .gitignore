@@ -93,6 +93,9 @@ temp/*
 # CDN feed actually names the new version. If this is not in the repo the feed
 # step is forgotten again, which is what stranded v2.2.3.
 !temp/publish-release.ps1
+# Proves a released build can actually reach a customer (feed vs newest tag vs
+# package digest) - the check that would have caught the v2.2.3 stall.
+!temp/verify-update.ps1
 
 # Local backups and probes
 _archive/
