@@ -89,7 +89,10 @@ internal static class BundleUpdate
             if (!LicenseService.IsActivated) return;
 
             // An incomplete copy is SelfRepair's job - it has nothing to compare.
-            if (SelfRepair.NeedsRepair) return;
+            // Same for a copy whose tool files are missing: the repair installs
+            // the package anyway, and staging a second copy would mean two 596 MB
+            // downloads racing each other.
+            if (SelfRepair.NeedsRepair || SelfRepair.ToolsKnownBroken) return;
 
             var check = await UpdateService.CheckAsync(ct).ConfigureAwait(false);
             if (!check.Ok || string.IsNullOrWhiteSpace(check.BundleTools)) return;

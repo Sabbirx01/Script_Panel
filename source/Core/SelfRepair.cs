@@ -45,6 +45,22 @@ internal static class SelfRepair
         !Directory.Exists(Path.Combine(AppPaths.AppRoot, "tools")) ||
         !File.Exists(Path.Combine(AppPaths.AppRoot, "runtime", "python", "python.exe"));
 
+    /// <summary>
+    /// Result of the last deep check: null = not checked yet, true = the files
+    /// on disk match tools.manifest, false = something is missing or altered.
+    /// Cached so the update path does not hash 216 MB a second time.
+    /// </summary>
+    private static bool? _toolsIntact;
+
+    /// <summary>First few tool files that are missing or do not match the manifest.</summary>
+    public static IReadOnlyList<string> BrokenTools { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// True when the panel should not spend a 596 MB download of its own: the
+    /// repair owns this install. Null (unchecked) counts as "carry on".
+    /// </summary>
+    public static bool ToolsKnownBroken => _toolsIntact == false;
+
     private static string MarkerFile => Path.Combine(AppPaths.Root, "repair-attempt.json");
 
     private sealed class Marker
@@ -92,6 +108,68 @@ internal static class SelfRepair
     }
 
     /// <summary>
+    /// Checks the files on disk against <c>tools.manifest</c>.
+    ///
+    /// <para><b>Why the manifest hash alone is not enough.</b> The updater
+    /// compares the hash of the manifest file, which proves the manifest is
+    /// intact - not that the 953 files it lists still exist. Installers get
+    /// quarantined: Defender and several AV products remove Python scripts that
+    /// create accounts, one file at a time, and the panel then looks complete
+    /// while every run dies on a missing import. This walks the list.</para>
+    ///
+    /// <para>Returns the first few offending paths, or empty when the tree is
+    /// intact. Records the verdict for the update path.</para>
+    /// </summary>
+    public static async Task<string[]> VerifyToolsAsync(CancellationToken ct = default)
+    {
+        var broken = new List<string>();
+        try
+        {
+            var manifest = Path.Combine(AppPaths.AppRoot, "tools.manifest");
+            var toolsDir = Path.Combine(AppPaths.AppRoot, "tools");
+
+            // No manifest at all: an install from before 2.2.8, or from the
+            // update zip. Both need the full package, but that is the bundle
+            // update's call, not a "broken file" verdict.
+            if (!File.Exists(manifest)) return Array.Empty<string>();
+
+            foreach (var line in await File.ReadAllLinesAsync(manifest, ct).ConfigureAwait(false))
+            {
+                var text = line.Trim();
+                if (text.Length <= 65) continue;
+
+                var expected = text.Substring(0, 64);
+                var rel = text.Substring(65).Replace('/', Path.DirectorySeparatorChar);
+                var full = Path.Combine(toolsDir, rel);
+
+                if (!File.Exists(full))
+                {
+                    broken.Add(rel);
+                }
+                else
+                {
+                    await using var stream = File.OpenRead(full);
+                    var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
+                    if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) broken.Add(rel);
+                }
+
+                if (broken.Count >= 8) break;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            // A check that cannot run must not condemn a healthy install.
+            Log.Warn("", "Tool verification skipped: " + ex.Message);
+            return Array.Empty<string>();
+        }
+
+        _toolsIntact = broken.Count == 0;
+        BrokenTools = broken;
+        return broken.ToArray();
+    }
+
+    /// <summary>
     /// Runs once, quietly, after the window is up. Returns when there is
     /// nothing to do, when the download failed, or after the installer has been
     /// started (the caller then shuts the panel down so the files can be
@@ -103,7 +181,6 @@ internal static class SelfRepair
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(6), ct).ConfigureAwait(false);
-            if (!LicenseService.IsActivated || !NeedsRepair) return;
 
             // Wait for the licence the same way the auto-updater does: a slow
             // online revalidation at boot used to make this give up instantly.
@@ -111,11 +188,21 @@ internal static class SelfRepair
                 await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
             if (!LicenseService.IsActivated) return;
 
+            if (!NeedsRepair)
+            {
+                // Folders are present - but are the files? A quarantine after a
+                // clean install leaves exactly the state customers describe:
+                // "the tools are not there" while the panel looks fine.
+                await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                var broken = await VerifyToolsAsync(ct).ConfigureAwait(false);
+                if (broken.Length == 0) return;
+                Log.Warn("", "Tool files are missing or altered: " + string.Join(", ", broken));
+            }
+
             if (AttemptedRecently())
             {
                 Log.Warn("", "This copy is missing its tool files and a repair was already tried today.");
-                Status?.Invoke("This copy is incomplete",
-                    "It has no tools\\ folder. Download DeveloperXPanel-Setup.exe from the download page to fix it.");
+                Status?.Invoke("This copy is incomplete", Describe(false));
                 return;
             }
 
@@ -125,7 +212,7 @@ internal static class SelfRepair
             if (setupUrl is null)
             {
                 Status?.Invoke("This copy is incomplete",
-                    "It has no tools\\ folder, and the installer could not be located. Download it from the download page.");
+                    Describe(true));
                 return;
             }
 
@@ -182,6 +269,25 @@ internal static class SelfRepair
         {
             _running = false;
         }
+    }
+
+    /// <summary>
+    /// Says which file is missing when we know, instead of "no tools folder" -
+    /// a customer can then confirm an antivirus took it.
+    /// </summary>
+    private static string Describe(bool installerMissing)
+    {
+        var what = BrokenTools.Count > 0
+            ? string.Join(", ", BrokenTools.Take(3)) + (BrokenTools.Count > 3 ? ", ..." : "")
+            : @"tools\";
+
+        var text = BrokenTools.Count > 0
+            ? $"These files are missing or were changed on this PC: {what}. An antivirus often removes tool scripts."
+            : $"This copy has no {what} folder.";
+
+        return installerMissing
+            ? text + " The installer could not be located - get DeveloperXPanel-Setup.exe from the download page."
+            : text + " Reinstalling DeveloperXPanel-Setup.exe restores them.";
     }
 
     private static async Task<bool> DownloadAsync(string url, string target, CancellationToken ct)
