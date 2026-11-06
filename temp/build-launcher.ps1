@@ -180,6 +180,42 @@ if (-not (Test-Path -LiteralPath (Join-Path $Bundle '.playwright'))) {
     Bad "bundle\\.playwright is missing - the panel cannot start without it."; exit 1
 }
 
+# ------------------------------------------------- 2b. tools fingerprint
+#
+# The exe swap can never update a tool script, so an installed panel needs a way
+# to notice that the tool files themselves changed. This writes a sorted
+# "hash relPath" list into the bundle; the panel hashes that one file at startup
+# and compares it with the value published in update.json. Equal means nothing
+# to do; different means fetch the setup. Because it is derived from the files,
+# it cannot go stale the way a hand-maintained bundle version can.
+Head 'Fingerprinting tools\ for the automatic full update'
+$toolsDir = Join-Path $Bundle 'tools'
+if (-not (Test-Path -LiteralPath $toolsDir)) { Bad "bundle has no tools\\ folder"; exit 1 }
+
+$rows = Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Force | ForEach-Object {
+    $rel = $_.FullName.Substring($toolsDir.Length).TrimStart('\').Replace('\', '/')
+    [pscustomobject]@{
+        Rel  = $rel
+        Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+} | Sort-Object Rel -CaseSensitive
+
+$manifestPath = Join-Path $Bundle 'tools.manifest'
+[IO.File]::WriteAllLines(
+    $manifestPath,
+    ($rows | ForEach-Object { '{0} {1}' -f $_.Hash, $_.Rel }),
+    (New-Object Text.UTF8Encoding($false)))
+
+$manifestSha = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$infoDir = Join-Path $root 'Build'
+if (-not (Test-Path -LiteralPath $infoDir)) { New-Item -ItemType Directory -Force -Path $infoDir | Out-Null }
+[pscustomobject]@{
+    version     = $Version
+    toolsSha256 = $manifestSha
+    files       = $rows.Count
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $infoDir 'bundle-info.json') -Encoding UTF8
+Ok ("tools.manifest  {0} files  sha {1}" -f $rows.Count, $manifestSha.Substring(0, 12))
+
 # ------------------------------------------------------------------ 3. leak scan
 Head 'Checking the bundle carries no secrets'
 

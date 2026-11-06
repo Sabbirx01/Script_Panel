@@ -99,6 +99,12 @@ internal static class UpdateService
         public long Size { get; set; }
         public string HashUrl { get; set; } = "";
         public string Signature { get; set; } = "";
+
+        /// <summary>SHA-256 of the tools.manifest that shipped inside the setup.</summary>
+        public string BundleTools { get; set; } = "";
+        public string SetupUrl { get; set; } = "";
+        public string SetupSha256 { get; set; } = "";
+        public long SetupSize { get; set; }
     }
 
     /// <summary>Shape of the small update.json published next to the download page.</summary>
@@ -110,6 +116,12 @@ internal static class UpdateService
         [JsonPropertyName("packageUrl")] public string PackageUrl { get; set; } = "";
         [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
         [JsonPropertyName("size")] public long Size { get; set; }
+
+    // Written by temp\publish-release.ps1 once the encrypted setup is attached.
+    [JsonPropertyName("bundleTools")] public string BundleTools { get; set; } = "";
+    [JsonPropertyName("setupUrl")] public string SetupUrl { get; set; } = "";
+    [JsonPropertyName("setupSha256")] public string SetupSha256 { get; set; } = "";
+    [JsonPropertyName("setupSize")] public long SetupSize { get; set; }
     }
 
     /// <summary>
@@ -178,6 +190,7 @@ internal static class UpdateService
             Version = tag.TrimStart('v', 'V'),
             PackageUrl = zip,
             HashUrl = zip + ".sha256",
+            SetupUrl = $"https://github.com/{GitHubRepo}/releases/download/{tag}/DeveloperXPanel-Setup.exe",
             Notes = "Release " + tag
         };
     }
@@ -233,7 +246,11 @@ internal static class UpdateService
                 Notes = feed.Notes,
                 PackageUrl = feed.PackageUrl,
                 PackageSha256 = feed.Sha256,
-                Size = feed.Size
+                Size = feed.Size,
+                BundleTools = feed.BundleTools ?? "",
+                SetupUrl = feed.SetupUrl ?? "",
+                SetupSha256 = feed.SetupSha256 ?? "",
+                SetupSize = feed.SetupSize
             };
         }
         catch
@@ -251,6 +268,12 @@ internal static class UpdateService
         public string Notes { get; init; } = "";
         public IReadOnlyList<ManifestFile> Changed { get; init; } = Array.Empty<ManifestFile>();
         public long ChangedBytes { get; init; }
+
+    /// <summary>Fingerprint of the tools shipped inside the setup, "" when unknown.</summary>
+    public string BundleTools { get; init; } = "";
+    public string SetupUrl { get; init; } = "";
+    public string SetupSha256 { get; init; } = "";
+    public long SetupSize { get; init; }
         public bool UpToDate => Ok && Changed.Count == 0;
     }
 
@@ -633,7 +656,9 @@ internal static class UpdateService
             return new CheckResult
             {
                 Ok = true, CurrentVersion = current,
-                AvailableVersion = feed.Version, Notes = feed.Notes
+                AvailableVersion = feed.Version, Notes = feed.Notes,
+                BundleTools = feed.BundleTools, SetupUrl = feed.SetupUrl,
+                SetupSha256 = feed.SetupSha256, SetupSize = feed.SetupSize
             };
 
         var packageFile = new ManifestFile
@@ -648,7 +673,9 @@ internal static class UpdateService
         return new CheckResult
         {
             Ok = true, CurrentVersion = current, AvailableVersion = feed.Version,
-            Notes = feed.Notes, Changed = new[] { packageFile }, ChangedBytes = feed.Size
+            Notes = feed.Notes, Changed = new[] { packageFile }, ChangedBytes = feed.Size,
+            BundleTools = feed.BundleTools, SetupUrl = feed.SetupUrl,
+            SetupSha256 = feed.SetupSha256, SetupSize = feed.SetupSize
         };
     }
 

@@ -16,6 +16,16 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             WriteCrashLog(args.ExceptionObject as Exception, "AppDomain");
 
+        // A package staged by the previous session installs itself here, before
+        // any window exists: the setup closes this process, unpacks over the
+        // install and starts the panel again, so the customer never works on a
+        // half-updated panel.
+        if (BundleUpdate.ApplyPending())
+        {
+            Shutdown();
+            return;
+        }
+
         // Load persisted state before the shell window appears. Order matters:
         // the product registry decides which slug every key claims, the tool
         // registry decides which boxes exist, and the catalogue needs the cookie
@@ -104,6 +114,12 @@ public partial class App : Application
         // installer, and swapping the exe under it would only add a second
         // 124 MB download for no benefit.
         if (!SelfRepair.NeedsRepair) _ = UpdateService.AutoInstallAsync();
+
+        // Tool scripts only change inside the full package, which the exe swap
+        // never touches. This compares the published tools fingerprint with the
+        // installed one and stages the setup when they differ - so a selectors
+        // fix reaches customers without them clicking anything.
+        _ = BundleUpdate.CheckAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)

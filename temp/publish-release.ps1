@@ -148,6 +148,36 @@ if (-not $SkipSetupUpload) {
     $head = Invoke-WebRequest -Uri $setupUrl -Method Head -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 60
     if ($head.StatusCode -ne 200) { throw "the uploaded Setup.exe is not downloadable ($($head.StatusCode))" }
     Ok ((Split-Path $setup -Leaf) + ' attached and downloadable')
+    # ------------------------------------- 4b. publish the full-package facts
+    #
+    # The panel needs three things it cannot derive from the update zip: where
+    # the full package lives, its digest, and the fingerprint of the tool files
+    # inside it. Without the fingerprint a tool-script fix would never reach an
+    # installed panel - the exe swap touches one file.
+    Step 4b 'publishing the full-package facts to the feed'
+
+    $infoPath = Join-Path $root 'Build\bundle-info.json'
+    if (-not (Test-Path -LiteralPath $infoPath)) {
+        throw 'Build\bundle-info.json is missing - build-launcher.ps1 did not fingerprint tools\'
+    }
+    $info = Get-Content -LiteralPath $infoPath -Raw | ConvertFrom-Json
+
+    & git -C $root pull --rebase --quiet origin main 2>&1 | Out-Null
+    $feedPath = Join-Path $root 'docs\update.json'
+    $feedJson = Get-Content -LiteralPath $feedPath -Raw | ConvertFrom-Json
+    $setupHash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    $feedJson | Add-Member -NotePropertyName setupUrl -NotePropertyValue $setupUrl -Force
+    $feedJson | Add-Member -NotePropertyName setupSha256 -NotePropertyValue $setupHash -Force
+    $feedJson | Add-Member -NotePropertyName setupSize -NotePropertyValue ((Get-Item -LiteralPath $setup).Length) -Force
+    $feedJson | Add-Member -NotePropertyName bundleTools -NotePropertyValue $info.toolsSha256 -Force
+    $feedJson | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $feedPath -Encoding UTF8
+
+    & git -C $root add docs/update.json
+    & git -C $root commit -m ("release: full package for " + $tag + " (tools " + $info.toolsSha256.Substring(0, 12) + ")") 2>&1 | Out-Null
+    & git -C $root push origin HEAD:main 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'could not push the feed commit - panels would never see the full package' }
+    Ok ("feed carries the setup and the tools fingerprint " + $info.toolsSha256.Substring(0, 12))
 } else {
     Step 4 'skipping setup upload (-SkipSetupUpload)'
 }
@@ -179,6 +209,15 @@ if ($assetHash -and ($assetHash.ToLowerInvariant() -ne $feed.sha256.ToLowerInvar
     throw "feed sha256 does not match the published .sha256 asset - a panel would reject the download"
 }
 Ok 'feed digest matches the published asset'
+
+# The full-package fields are what keep tool scripts current on an installed
+# panel; a release without them would silently stop delivering them.
+if (-not $feed.bundleTools) {
+    throw 'the feed has no bundleTools fingerprint - installed panels would never pick up tool changes'
+}
+$setupHead = Invoke-WebRequest -Uri $feed.setupUrl -Method Head -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 60
+if ($setupHead.StatusCode -ne 200) { throw "feed setupUrl is not downloadable ($($setupHead.StatusCode))" }
+Ok ("full package: $([math]::Round($feed.setupSize/1MB,1)) MB, tools " + $feed.bundleTools.Substring(0, 12))
 
 Write-Host ""
 Write-Host "  DONE  $tag is live and auto-update can see it" -ForegroundColor Green

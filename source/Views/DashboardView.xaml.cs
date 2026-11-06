@@ -37,6 +37,12 @@ public partial class DashboardView : UserControl
         // downloading ~600 MB instead of being surprised by it.
         SelfRepair.Status += OnRepairStatus;
         Unloaded += (_, _) => SelfRepair.Status -= OnRepairStatus;
+
+        // Same banner for the whole-package update: it reports the download and
+        // the "reopen to install" state, so nothing installs behind the
+        // customer's back.
+        BundleUpdate.Status += OnRepairStatus;
+        Unloaded += (_, _) => BundleUpdate.Status -= OnRepairStatus;
     }
 
     private void OnRepairStatus(string title, string detail) =>
