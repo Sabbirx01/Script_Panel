@@ -4,8 +4,9 @@
     DeveloperXPanel-Setup.exe
 
     ONE file the customer keeps. It carries the whole panel (exe + tools +
-    runtime + .playwright) packed inside it, unpacks once into
-    %LOCALAPPDATA%\DeveloperXPanel and then starts the panel from there.
+    runtime + .playwright) packed inside it, unpacks once into the folder the
+    customer picks (%LOCALAPPDATA%\DeveloperXPanel by default) and then starts
+    the panel from there. Every later run reuses that same folder.
 
     The payload is embedded, not copied beside the exe, so the customer never
     sees a folder - that is the whole point of this project.

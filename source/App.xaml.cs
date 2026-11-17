@@ -16,6 +16,16 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             WriteCrashLog(args.ExceptionObject as Exception, "AppDomain");
 
+        // Windows' Uninstall button runs this exe again with /uninstall. Handled
+        // before anything else is touched: the panel has to close itself and then
+        // delete the folder it was started from, which only works from a process
+        // that is already on its way out.
+        if (UninstallService.IsUninstall(e.Args))
+        {
+            Shutdown(UninstallService.Run(e.Args));
+            return;
+        }
+
         // A package staged by the previous session installs itself here, before
         // any window exists: the setup closes this process, unpacks over the
         // install and starts the panel again, so the customer never works on a
@@ -41,6 +51,15 @@ public partial class App : Application
         }
 
         AppPaths.Ensure();
+
+        // The setup file the customer downloaded is not part of the install and
+        // the updater never replaces it, so a PC installed before the uninstaller
+        // existed has no "Apps & features" entry at all, and one whose setup was
+        // since moved or deleted has an Uninstall button that points at nothing.
+        // The panel IS the install, so it keeps its own entry working - in the
+        // background, because it walks the install folder for the size column.
+        _ = Task.Run(UninstallService.EnsureEntry);
+
         ProductCatalog.Load();
         ToolCatalog.Load();
         LicenseService.Load();
