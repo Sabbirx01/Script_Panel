@@ -115,14 +115,26 @@ jobs:
             packageUrl = $url
             sha256     = $hash
             size       = $size
+            # The full Setup exe is uploaded to this release separately (it is
+            # built locally with the encryption key). Its URL is predictable,
+            # but its size/SHA-256 are not known until that upload finishes, so
+            # they are filled in afterwards by temp/publish-release.ps1. The
+            # download page tolerates a missing setupSize by falling back to the
+            # GitHub release API, which reports the real asset size.
+            setupUrl   = "https://github.com/Sabbirx01/Script_Panel/releases/download/$tag/DeveloperXPanel-Setup.exe"
           }
           $feed | ConvertTo-Json -Compress | Set-Content -LiteralPath 'docs/update.json' -Encoding utf8 -NoNewline
 
           # The page's offline fallback still has to name the newest file, or a
-          # customer whose feed and API call both fail is offered the old zip.
+          # customer whose feed and API call both fail is offered the old file.
+          # The fallback now carries both the full Setup (primary) and the small
+          # update ZIP (secondary). Setup size/SHA are unknown at this point
+          # (uploaded later), so they are left empty; the page shows
+          # "Release package" instead of a size in that rare last-resort case.
           $html = Get-Content -LiteralPath 'docs/index.html' -Raw
-          $pattern = "fallback:\{tag:'[^']*',name:'[^']*',size:\d+,url:'[^']*',digest:'[^']*'\}"
-          $replacement = "fallback:{tag:'$tag',name:'DeveloperXBulkAccPanel-$tag.zip',size:$size,url:'$url',digest:'sha256:$hash'}"
+          $pattern = "fallback:\{tag:'[^']*',name:'[^']*',size:\d*,url:'[^']*',digest:'[^']*'(?:,zip:\{[^}]*\})?\}"
+          $setupUrl = "https://github.com/Sabbirx01/Script_Panel/releases/download/$tag/DeveloperXPanel-Setup.exe"
+          $replacement = "fallback:{tag:'$tag',name:'DeveloperXPanel-Setup.exe',size:0,url:'$setupUrl',digest:'',zip:{name:'DeveloperXBulkAccPanel-$tag.zip',size:$size,url:'$url',digest:'sha256:$hash'}}"
           if ($html -match $pattern) {
             $html = [regex]::Replace($html, $pattern, $replacement)
             Set-Content -LiteralPath 'docs/index.html' -Value $html -Encoding utf8 -NoNewline
