@@ -71,6 +71,21 @@ $publishArgs = @(
     "--nologo"
 )
 
+# The four tools' Python source is embedded in this executable, so it has to be
+# packed BEFORE the compiler runs: source\Resources\toolbox.enc and the generated
+# ToolboxKey.g.cs are build INPUTS, not outputs. Without this the exe is compiled
+# around whatever the last pack left behind, so a fix to a tool script would
+# appear to do nothing. temp\build-toolbox.ps1 also writes temp\tools.manifest,
+# which build-portable.ps1 ships and the panel's updater compares at startup.
+$toolbox = Join-Path $rootDir "temp\build-toolbox.ps1"
+if (Test-Path -LiteralPath $toolbox) {
+    Write-Host "  packing the tools into the executable..." -ForegroundColor DarkGray
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $toolbox
+    if ($LASTEXITCODE -ne 0) { throw "build-toolbox.ps1 failed (exit $LASTEXITCODE)" }
+} else {
+    Write-Host "  temp\build-toolbox.ps1 not found - reusing the existing toolbox.enc" -ForegroundColor Yellow
+}
+
 if ($FrameworkDependent) {
     $publishArgs += "-p:SelfContained=false"
     Write-Host "  mode  : framework dependent (needs .NET desktop runtime)" -ForegroundColor Yellow

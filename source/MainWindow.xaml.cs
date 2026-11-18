@@ -57,7 +57,7 @@ public partial class MainWindow : Window
 
     private void OnWindowPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        var sv = FindScrollViewer(e.OriginalSource as DependencyObject);
+        var sv = ScrollChain.Find(e.OriginalSource as DependencyObject);
         if (sv is null) return;
 
         var now = DateTime.UtcNow;
@@ -69,33 +69,11 @@ public partial class MainWindow : Window
         }
         _wheelAt[sv] = now;
 
-        if (sv.CanContentScroll)
-        {
-            if (e.Delta > 0) sv.LineUp(); else sv.LineDown();
-            e.Handled = true;
-            return;
-        }
-
-        var step = Math.Clamp(sv.ViewportHeight * 0.10, 32, 110);
-        var target = sv.VerticalOffset - (e.Delta > 0 ? step : -step);
-        target = Math.Clamp(target, 0, Math.Max(0, sv.ScrollableHeight));
-
-        // At either end, leave the event alone so the outer page scrolls.
-        if (Math.Abs(target - sv.VerticalOffset) < 0.5) return;
-
-        sv.ScrollToVerticalOffset(target);
-        e.Handled = true;
-    }
-
-    private static ScrollViewer? FindScrollViewer(DependencyObject? node)
-    {
-        while (node is not null && node is not ScrollViewer)
-        {
-            node = node is Visual or Visual3D
-                ? VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-        return node as ScrollViewer;
+        // The wheel used to die in whichever nested ScrollViewer sat under the
+        // pointer - the live log, the mail list, the account list - because that
+        // box marks the event handled even with nothing left to scroll. See
+        // ScrollChain: it now walks outwards to the first box that can move.
+        if (ScrollChain.Handle(sv, e.Delta)) e.Handled = true;
     }
 
     // ------------------------------------------------------------ status pill

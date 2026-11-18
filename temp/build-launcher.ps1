@@ -4,8 +4,9 @@
     Customer-ke ekta file-i dite hoy:  DeveloperXPanel-Setup.exe
 
     bhitore ki thake (sob, AES-256 kore bandha):
-        DeveloperXBulkAccPanel.exe
-        tools\            (4 ta tool, .env / accounts.txt baad)
+        DeveloperXBulkAccPanel.exe   (er BHITORE-i 4 ta tool-er .py, toolbox.enc
+                                      hoye boshe ache - alada tools\ folder nai)
+        tools.manifest    exe-r bhitorer payload-er fingerprint
         runtime\          python + chromium
         .playwright\      panel-er nijer driver
         portable.txt      data\ exe-er pash-e thakbe
@@ -183,38 +184,30 @@ if (-not (Test-Path -LiteralPath (Join-Path $Bundle '.playwright'))) {
 # ------------------------------------------------- 2b. tools fingerprint
 #
 # The exe swap can never update a tool script, so an installed panel needs a way
-# to notice that the tool files themselves changed. This writes a sorted
-# "hash relPath" list into the bundle; the panel hashes that one file at startup
-# and compares it with the value published in update.json. Equal means nothing
-# to do; different means fetch the setup. Because it is derived from the files,
-# it cannot go stale the way a hand-maintained bundle version can.
-Head 'Fingerprinting tools\ for the automatic full update'
-$toolsDir = Join-Path $Bundle 'tools'
-if (-not (Test-Path -LiteralPath $toolsDir)) { Bad "bundle has no tools\\ folder"; exit 1 }
-
-$rows = Get-ChildItem -LiteralPath $toolsDir -Recurse -File -Force | ForEach-Object {
-    $rel = $_.FullName.Substring($toolsDir.Length).TrimStart('\').Replace('\', '/')
-    [pscustomobject]@{
-        Rel  = $rel
-        Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    }
-} | Sort-Object Rel -CaseSensitive
-
+# to notice that the tool files themselves changed. It hashes one small file -
+# tools.manifest - and compares it with the value published in update.json.
+# Equal means nothing to do; different means fetch the setup.
+#
+# The manifest names the files INSIDE the panel exe now (build-toolbox.ps1 writes
+# it from the very files it packed into toolbox.enc), because the bundle carries
+# no tools\ folder any more. Hashing it here is the same computation the panel
+# performs at startup, so the two values line up by construction.
+Head 'Fingerprinting the embedded tools payload for the automatic full update'
 $manifestPath = Join-Path $Bundle 'tools.manifest'
-[IO.File]::WriteAllLines(
-    $manifestPath,
-    ($rows | ForEach-Object { '{0} {1}' -f $_.Hash, $_.Rel }),
-    (New-Object Text.UTF8Encoding($false)))
+if (-not (Test-Path -LiteralPath $manifestPath)) {
+    Bad "bundle has no tools.manifest - build-portable.ps1 did not run build-toolbox.ps1 first"; exit 1
+}
 
+$entries = @(Get-Content -LiteralPath $manifestPath -ErrorAction Stop)
 $manifestSha = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $infoDir = Join-Path $root 'Build'
 if (-not (Test-Path -LiteralPath $infoDir)) { New-Item -ItemType Directory -Force -Path $infoDir | Out-Null }
 [pscustomobject]@{
     version     = $Version
     toolsSha256 = $manifestSha
-    files       = $rows.Count
+    files       = $entries.Count
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $infoDir 'bundle-info.json') -Encoding UTF8
-Ok ("tools.manifest  {0} files  sha {1}" -f $rows.Count, $manifestSha.Substring(0, 12))
+Ok ("tools.manifest  {0} files  sha {1}" -f $entries.Count, $manifestSha.Substring(0, 12))
 
 # ------------------------------------------------------------------ 3. leak scan
 Head 'Checking the bundle carries no secrets'
@@ -238,6 +231,16 @@ foreach ($forbidden in @('source', 'licence-local', '_archive', '_backups', 'con
         Warn2 "bundle contains $forbidden\ - check this is intended"
     }
 }
+
+# A tools\ folder must never reappear in a bundle: it is the plaintext source
+# this whole change exists to stop shipping. build-portable.ps1 already removes
+# it and refuses to hand one over - this is the last gate before the setup exe
+# is sealed, so a hand-edited or half-rebuilt bundle cannot slip past.
+if (Test-Path -LiteralPath (Join-Path $Bundle 'tools')) {
+    Bad 'bundle contains tools\ - the tool source belongs inside the panel exe, not beside it'
+    exit 1
+}
+Ok 'no tools\ folder (the scripts travel inside the panel exe)'
 
 $bundleMb = [math]::Round(((Get-ChildItem -LiteralPath $Bundle -Recurse -File -Force -ErrorAction SilentlyContinue |
                 Measure-Object -Property Length -Sum).Sum / 1MB), 1)
@@ -324,6 +327,25 @@ $versionDir = Join-Path (Join-Path $root 'Version') $tag
 New-Item -ItemType Directory -Force -Path $versionDir | Out-Null
 Copy-Item -LiteralPath $setup -Destination (Join-Path $versionDir 'DeveloperXPanel-Setup.exe') -Force
 Ok "Version\$tag\DeveloperXPanel-Setup.exe"
+
+# The .sha256 sidecar is what the panel falls back to when a feed entry carries
+# no digest (BundleUpdate.VerifyAsync fetches setupUrl + ".sha256"). It used to
+# be written by hand at release time, so it went stale: a build would ship with
+# the PREVIOUS build's hash sitting next to it and every repair download would
+# fail its own integrity check. Written here, from the file just produced.
+$setupHash = (Get-FileHash -LiteralPath (Join-Path $buildDir 'DeveloperXPanel-Setup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+
+[IO.File]::WriteAllText(
+    (Join-Path $buildDir 'DeveloperXPanel-Setup.exe.sha256'),
+    "sha256:$setupHash`n",
+    (New-Object Text.UTF8Encoding($false)))
+
+[IO.File]::WriteAllText(
+    (Join-Path $versionDir 'DeveloperXPanel-Setup.exe.sha256'),
+    "sha256:$setupHash`n",
+    (New-Object Text.UTF8Encoding($false)))
+
+Ok ("DeveloperXPanel-Setup.exe.sha256  sha256:" + $setupHash.Substring(0, 16) + "...")
 
 if (-not $KeepPayload) {
     Remove-Item -LiteralPath $plainZip -Force -ErrorAction SilentlyContinue

@@ -4,9 +4,9 @@
     Produces:
 
         dist\DeveloperX-Portable\
-        ??? DeveloperXBulkAccPanel.exe     the panel
+        ??? DeveloperXBulkAccPanel.exe     the panel - and the tools' code inside it
         ??? .playwright\                   the driver the panel itself needs
-        ??? tools\                         the four tools' code
+        ??? tools.manifest                 fingerprint of the code inside the exe
         ??? runtime\
         ?   ??? ms-playwright\             the browser build the tools need
         ?   ??? python\                    (optional) a bundled interpreter
@@ -14,13 +14,19 @@
         ??? portable.txt                   tells the panel to keep data here
         ??? README.txt                     what the customer needs to know
 
+    Note the missing tools\ folder. The four tools' Python source is packed into
+    one AES-256 encrypted blob (source\Resources\toolbox.enc) that is embedded in
+    the panel executable and handed to the interpreter in memory, so the .py
+    files never reach the customer's disk.
+
     WHAT IT DELIBERATELY LEAVES OUT - and must, every time:
 
         licence-local\   the server.  config.php holds the RSA PRIVATE KEY; anyone
                          who has it can mint keys for every tool without you.
         source\          the panel's own code.
         connector\       the tools' drop-in client, and its tests.
-        _archive\ _backups\ tools\accio\source\ (not needed to run)
+        tools\           the tools' Python source - it belongs in the exe.
+        _archive\ _backups\
 
     Nothing it copies contains a private key, so the result is safe to hand over.
 
@@ -57,10 +63,16 @@ function Prune-Browsers($msPlaywright) {
         Measured on the shipping bundle: 700.8 MB of browsers, of which only
         426.7 MB is ever used.
 
-          chromium_headless_shell-*   270.8 MB   the tools are forbidden from
-                                                  running headless (it is the first
-                                                  thing bot detection looks at) and
-                                                  the panel never asks for it
+          chromium_headless_shell-*   270.8 MB   a SECOND browser, used only by
+                                                  Playwright's headless mode.
+                                                  panel_browser.py now asks for
+                                                  channel="chromium" whenever a
+                                                  run is headless, which drives
+                                                  the chromium-* build already
+                                                  shipped - so the shell is not
+                                                  needed at all (verified: the
+                                                  bundled build launches both
+                                                  headless and visible)
           ffmpeg-*                      3.4 MB   only used for video recording
           firefox-* / webkit-*                   no tool drives either
           locales\ (220 files)         42.7 MB   only en-US is ever rendered
@@ -133,99 +145,70 @@ if (Test-Path -LiteralPath $pw) {
 }
 
 # ?? 3. the tools' code ???????????????????????????????????????????????????????
-$toolsSrc = Join-Path $Root "tools"
-if (Test-Path -LiteralPath $toolsSrc) {
-    $toolsDst = Join-Path $Out "tools"
-    New-Item -ItemType Directory -Force -Path $toolsDst | Out-Null
-
-    # The operator's own credentials and per-run state must never travel inside a
-    # bundle.  They used to: a plain Copy-Item put the operator's Gmail address
-    # AND its password (tools\minimax\accounts.txt), the temp-mail tokens
-    # (account.txt) and 150 KB of live session cookies (cookie.txt/cookies.txt)
-    # into every copy handed to a customer -- which also defeated the whole point
-    # of accio's obfuscated secret.py sitting right next to a plaintext .env.
-    # These are written on the customer's own PC at run time, so leaving them out
-    # is safe.  secret.py is deliberately NOT in this list: the tools import it.
-    $secretNames = @(
-        ".env", "accounts.txt", "account.txt", "cookies.txt", "cookie.txt",
-        "usage_data.json", "usage.txt", "alice.json",
-        # Claim bookkeeping and the archive of dead accounts were missed by the
-        # first version of this list, so a bundle went out carrying claims.txt -
-        # which names real accounts and when they were last claimed.
-        "claims.txt", "dead_accounts.txt",
-        # Devin's saved browser storage. 187 KB of it, naming 13 real accounts
-        # and carrying their live auth session tokens - also missed by the first
-        # list, so it travelled inside a shipped bundle. Never again: match the
-        # name AND anything ending in _storage.txt / storage.txt.
-        "devin_storage.txt", "storage.txt",
-        # create.py's own runtime files. _live_proxies.txt is the list of
-        # proxies that SURVIVED its liveness test last run (create.py:1473
-        # "Write working proxies to a temp file beside the .exe"; it refetches
-        # from the provider when they all die), so shipping it handed every
-        # customer the operator's working proxy pool. _x_trick_debug.txt is a
-        # DOM dump create.py:2982 writes on demand. Both are recreated on the
-        # customer's own PC, so leaving them out is safe.
-        "_live_proxies.txt", "_x_trick_debug.txt"
-    )
-    $skipped = 0
-    Get-ChildItem -LiteralPath $toolsSrc -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch '\\__pycache__\\|\\node_modules\\|\\screenshots\\' } |
-        ForEach-Object {
-            # Exact names, plus anything that looks like a saved browser store
-            # (devin_storage.txt and friends), because that is where live
-            # session tokens hide.
-            if ($secretNames -contains $_.Name -or $_.Name -match '_storage\.txt$') { $skipped++; return }
-            $rel = $_.FullName.Substring($toolsSrc.Length).TrimStart('\')
-            $dst = Join-Path $toolsDst $rel
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dst) | Out-Null
-            Copy-Item -LiteralPath $_.FullName -Destination $dst -Force
-        }
-
-    # A previous build left them behind, and Copy-Item merges rather than deletes.
-    $stale = Get-ChildItem -LiteralPath $toolsDst -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $secretNames -contains $_.Name }
-    if ($stale) {
-        $stale | Remove-Item -Force -ErrorAction SilentlyContinue
-        Step ("scrubbed         " + $stale.Count + " leftover credential/state file(s)")
-    }
-
-    $n = (Get-ChildItem $toolsDst -Recurse -File | Measure-Object).Count
-    Step ("tools            $n files  ($skipped credential/state file(s) left out)")
-
-    # Refuse to hand over a bundle that still carries someone's credentials.
-    $still = Get-ChildItem -LiteralPath $Out -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $secretNames -contains $_.Name -or $_.Name -match '_storage\.txt$' }
-    if ($still) {
-        $still | Select-Object -First 8 | ForEach-Object { Step ("  LEAK  " + $_.FullName) }
-        Fail "credential or state files reached the bundle - refusing to ship it."
-    }
-    Step "safety check     no credential/state files in the bundle"
-
-    # Second net, by CONTENT rather than by filename.  The name filter above is
-    # blind to a secret typed into ordinary source -- and that is exactly what
-    # was hiding here: tools\minimax\create_advanced.py shipped a
-    # DEFAULT_PASSWORD literal that happened to be the operator's own Gmail
-    # password.  Warn instead of failing, because a tool legitimately may carry a
-    # non-personal default; a human should look at whatever this lists.
-    $placeholder = 'example|placeholder|changeme|your[_-]?|dummy|xxxx|\$\{|os\.environ|getenv|None|""|'''
-    # Note: -Include is silently ignored next to -LiteralPath, which would make
-    # this check find nothing at all.  Filter the extension by hand instead.
-    $suspect = Get-ChildItem -LiteralPath $toolsDst -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in '.py', '.js', '.ts' } |
-        Select-String -Pattern 'PASSWORD|API_KEY|SECRET|TOKEN|PASSWD' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Line -match '=\s*["''][^"'']{6,}["'']' -and $_.Line -notmatch $placeholder }
-    if ($suspect) {
-        Step ""
-        Step "WARNING - hardcoded-looking secrets in shipped code:"
-        $suspect | Select-Object -First 12 | ForEach-Object {
-            Step ("  " + $_.Path.Replace($toolsDst + '\', '') + ":" + $_.LineNumber + "  " + $_.Line.Trim())
-        }
-        Step "  (review these; a real credential must come from the panel, not the source)"
-        Step ""
-    }
-} else {
-    Fail "tools\ is missing - nothing for the panel to run."
+#
+# The tools' Python source is NOT shipped as files any more. It is packed into
+# one AES-256 blob (source\Resources\toolbox.enc) that lives INSIDE
+# DeveloperXBulkAccPanel.exe, and the panel hands it to the bundled interpreter
+# in memory. There is therefore no scripts folder to copy - which is the point:
+# anybody who got the installer used to get the whole tools\ tree with it.
+#
+# Two things are still needed here:
+#
+#   tools.manifest   the identity of the payload that sits inside the exe. The
+#                    panel hashes this one small file at startup (BundleUpdate)
+#                    and compares it with the value published for the release,
+#                    which is how a tools-side change gets noticed at all. It is
+#                    written by temp\build-toolbox.ps1 from the very files that
+#                    went into the archive, so it cannot drift from the exe.
+#
+#   a clean folder   a tools\ folder left behind by an earlier build must not
+#                    survive: Copy-Item merges rather than replaces, and
+#                    shipping it would hand over exactly what this removes.
+$manifestSrc = Join-Path $Root "temp\tools.manifest"
+if (-not (Test-Path -LiteralPath $manifestSrc)) {
+    Fail "temp\tools.manifest is missing - run temp\build-toolbox.ps1 (source\build.ps1 does it) first."
 }
+
+$staleTools = Join-Path $Out "tools"
+if (Test-Path -LiteralPath $staleTools) {
+    Remove-Item -LiteralPath $staleTools -Recurse -Force
+    Step "removed           a leftover tools\ folder from the bundle"
+}
+
+Copy-Item -LiteralPath $manifestSrc -Destination (Join-Path $Out "tools.manifest") -Force
+$entries = @(Get-Content -LiteralPath $manifestSrc -ErrorAction SilentlyContinue)
+Step ("tools.manifest   " + $entries.Count + " file entries (fingerprints the in-exe payload)")
+
+# Refuse to hand over a bundle that still carries someone's credentials. They
+# used to ride along inside tools\ ; the tools are gone from the bundle now, but
+# the check stays because that folder is not the only thing that gets copied.
+$secretNames = @(
+    ".env", "accounts.txt", "account.txt", "cookies.txt", "cookie.txt",
+    "usage_data.json", "usage.txt", "alice.json",
+    "claims.txt", "dead_accounts.txt",
+    "devin_storage.txt", "storage.txt",
+    "_live_proxies.txt", "_x_trick_debug.txt"
+)
+$still = Get-ChildItem -LiteralPath $Out -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $secretNames -contains $_.Name -or $_.Name -match '_storage\.txt$' }
+if ($still) {
+    $still | Select-Object -First 8 | ForEach-Object { Step ("  LEAK  " + $_.FullName) }
+    Fail "credential or state files reached the bundle - refusing to ship it."
+}
+Step "safety check     no credential/state files in the bundle"
+
+# The whole point of this build, asserted rather than assumed: no tool source
+# anywhere in the bundle. The interpreter and the panel's own Playwright driver
+# carry .py of their own (the Python stdlib, the Node driver) and those are not
+# ours, so only those two folders are excused.
+$exposed = Get-ChildItem -LiteralPath $Out -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -in '.py', '.pyc' } |
+    Where-Object { $_.FullName -notmatch '\\runtime\\|\\.playwright\\' }
+if ($exposed) {
+    $exposed | Select-Object -First 10 | ForEach-Object { Step ("  LEAK  " + $_.FullName) }
+    Fail "tool source reached the bundle - refusing to ship it."
+}
+Step "safety check     no tool source in the bundle"
 
 # ?? 4. the browser build Playwright asks for ?????????????????????????????????
 $rt = Join-Path $Root "runtime"
@@ -243,8 +226,74 @@ if (Test-Path -LiteralPath $rt) {
     # the browser that is actually used. Without it Playwright only ever looks at
     # %LOCALAPPDATA%\ms-playwright and the bundled copy is dead weight.
     Step "                 PLAYWRIGHT_BROWSERS_PATH -> runtime\ms-playwright (set by the panel)"
-    if (-not (Test-Path (Join-Path $Out "runtime\python\python.exe"))) {
+
+    # -- the python side of the runtime ---------------------------------------
+    $py = Join-Path $Out "runtime\python\python.exe"
+    if (Test-Path -LiteralPath $py) {
+        # Drop every site-package the tools never import (selenium, openai,
+        # mistralai, g4f, aiohttp, pip ...). temp\prune-runtime.py derives the
+        # keep-set from the tools' own import statements and REFUSES to delete
+        # anything it cannot prove is unused - so a wrong guess stops the build
+        # instead of breaking a customer's run.
+        $pruner = Join-Path $Root "temp\prune-runtime.py"
+        if (Test-Path -LiteralPath $pruner) {
+            & $py $pruner (Join-Path $Out "runtime\python\Lib\site-packages") `
+                --tools (Join-Path $Root "tools") --apply 2>&1 |
+                Where-Object { $_ -match 'freed|keep-set|REFUSING|not covered' } |
+                ForEach-Object { Step ("prune            " + $_.ToString().Trim()) }
+            if ($LASTEXITCODE -ne 0) {
+                Fail "pruning the python runtime failed - refusing to ship a runtime the tools cannot import from."
+            }
+
+            # Prove the pruned runtime still satisfies every tool: this imports
+            # the roots and fails the build on the first missing module.
+            $probe = @'
+import importlib
+import sys
+
+MODS = ["requests", "playwright", "curl_cffi", "cryptography", "dotenv",
+        "pyautogui", "pyperclip", "pywinauto", "cloakbrowser"]
+
+bad = []
+for name in MODS:
+    try:
+        importlib.import_module(name)
+    except Exception as exc:
+        bad.append("%s (%s)" % (name, exc))
+
+print("OK" if not bad else "MISSING " + ", ".join(bad))
+sys.exit(1 if bad else 0)
+'@
+            $probeFile = Join-Path $Root "temp\_runtime-probe.py"
+            Set-Content -LiteralPath $probeFile -Value $probe -Encoding UTF8
+            $result = & $py $probeFile 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Fail ("the pruned runtime cannot import a module the tools use: " + ($result -join ' '))
+            }
+            Step "import test      every module the tools use still imports"
+        }
+
+        # pip and its console scripts are dead weight once the runtime is fixed.
+        foreach ($junk in @("runtime\python\Scripts", "runtime\python\Lib\ensurepip")) {
+            $path = Join-Path $Out $junk
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+        }
+    } else {
         Step "                 (no bundled python: the customer's PC needs Python installed)"
+    }
+
+    # One Node binary, not two. The C# driver's .playwright\node\win32_x64\node.exe
+    # is byte-identical to the one the python playwright package ships (both are
+    # the 1.62.0 driver), so 88 MB of duplicate used to travel in every bundle.
+    # The panel points PLAYWRIGHT_NODEJS_PATH at the python copy (see
+    # AppPaths.RuntimeEnvironment), which the C# driver honours.
+    $dupNode = Join-Path $Out ".playwright\node"
+    $sharedNode = Join-Path $Out "runtime\python\Lib\site-packages\playwright\driver\node.exe"
+    if ((Test-Path -LiteralPath $dupNode) -and (Test-Path -LiteralPath $sharedNode)) {
+        Remove-Item -LiteralPath $dupNode -Recurse -Force
+        Step "slimmed          .playwright\node removed - one shared node.exe with the python driver"
+    } elseif (Test-Path -LiteralPath $dupNode) {
+        Step "                 .playwright\node kept (no python driver to share it with)"
     }
 } else {
     Step "runtime\ missing - the tools will need a browser already installed on the target PC"
@@ -352,9 +401,11 @@ comes with you - but a licence key only runs on the machine it was activated on,
 so ask for a new one if you move.
 
   data\      your licence, your tool settings, your accounts and cookies
-  tools\     the automation scripts
-  runtime\   the browser they run in
+  runtime\   the browser the tools run in
 
+The tools' own scripts are not files you can open - they are encrypted inside
+DeveloperXBulkAccPanel.exe, which is what keeps them out of anyone else's hands.
+"
 Need help?  Send the folder's  data\logs\  file for the day it went wrong.
 "@
 Step "README.txt       written"

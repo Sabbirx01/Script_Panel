@@ -147,14 +147,26 @@ public partial class PythonToolPanelView : UserControl
 
         var s = ToolSettingsStore.For(_toolId);
         var paths = new List<string>();
-        if (!string.IsNullOrWhiteSpace(s.CreateScriptPath) && File.Exists(s.CreateScriptPath)) paths.Add("create");
-        if (!string.IsNullOrWhiteSpace(s.LoginScriptPath)  && File.Exists(s.LoginScriptPath))  paths.Add("login");
+        if (ScriptAvailable(s.CreateScriptPath, login: false)) paths.Add("create");
+        if (ScriptAvailable(s.LoginScriptPath,  login: true))  paths.Add("login");
         StatScripts.Text = paths.Count == 0
             ? "⚠ no scripts"
             : (paths.Count == 2 ? "✓ create + login" : $"✓ {paths[0]} only");
 
         AcctEmpty.Visibility = accounts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    /// <summary>
+    /// True when this tool can actually be run: the script is beside the panel
+    /// (a dev checkout) or it travels INSIDE the panel
+    /// (<see cref="ToolboxRunner"/>, a shipped install - where no <c>.py</c>
+    /// is ever written to disk). Every "is the script there?" check in this
+    /// view has to ask both, or a shipped install reports "⚠ no scripts" and
+    /// refuses to launch a tool that is perfectly runnable.
+    /// </summary>
+    private bool ScriptAvailable(string? path, bool login) =>
+        (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) ||
+        (login ? ToolboxRunner.HasLogin(_toolId) : ToolboxRunner.HasCreate(_toolId));
 
     // ----------------------------------------------------------------- dashboard rows
 
@@ -387,6 +399,17 @@ public partial class PythonToolPanelView : UserControl
             var advanced = System.IO.Path.Combine(dir, "login_advanced.py");
             if (System.IO.File.Exists(advanced)) return advanced;
         }
+
+        // A shipped install has no scripts on disk - the tool's code (and its
+        // advanced companions) live inside the panel. Name the batch script so
+        // RunExtraScriptAsync resolves it out of the toolbox instead of
+        // silently falling back to the single-account adapter.
+        if (ToolboxRunner.SiblingEntry(_toolId, "login_advanced.py") is not null)
+        {
+            return dir.Length > 0
+                ? System.IO.Path.Combine(dir, "login_advanced.py")
+                : "login_advanced.py";
+        }
         return login;
     }
 
@@ -400,15 +423,15 @@ public partial class PythonToolPanelView : UserControl
     /// </summary>
     private void ApplyExtraTabToolShape()
     {
-        var hasClaim = false;
+        var hasClaim = ToolboxRunner.SiblingEntry(_toolId, "claim_advanced.py") is not null;
         try
         {
             var claim = ClaimScriptPath();
-            hasClaim = !string.IsNullOrWhiteSpace(claim) && File.Exists(claim);
+            hasClaim = hasClaim || (!string.IsNullOrWhiteSpace(claim) && File.Exists(claim));
         }
         catch
         {
-            hasClaim = false;
+            // keep whatever the toolbox told us
         }
 
         if (ClaimSection is not null)
@@ -464,18 +487,33 @@ public partial class PythonToolPanelView : UserControl
         var exe = settings?.PythonExePath ?? "";
         var work = settings?.ToolWorkingDirectory ?? "";
 
+        // Shipped installs keep no .py on disk: the same script travels inside
+        // the panel, so ask the toolbox for it by file name before giving up.
+        string? toolboxEntry = null;
         if (string.IsNullOrWhiteSpace(script) || !System.IO.File.Exists(script))
         {
-            AppendExtra($"✗ script not found: {script}");
-            return;
+            toolboxEntry = ToolboxRunner.SiblingEntry(_toolId,
+                string.IsNullOrWhiteSpace(script) ? null : System.IO.Path.GetFileName(script));
+
+            if (toolboxEntry is null)
+            {
+                AppendExtra($"✗ script not found: {script}");
+                return;
+            }
         }
         if (string.IsNullOrWhiteSpace(exe) || !System.IO.File.Exists(exe))
         {
             AppendExtra("✗ the python.exe from the tool settings was not found.");
             return;
         }
-        if (string.IsNullOrWhiteSpace(work) || !System.IO.Directory.Exists(work))
-            work = System.IO.Path.GetDirectoryName(script) ?? "";
+        if (!System.IO.Directory.Exists(work))
+        {
+            // A real, writable folder is required either way: the tools drop
+            // side files next to themselves and python refuses a bad cwd.
+            work = toolboxEntry is not null
+                ? ToolboxRunner.WorkingDirectory(_toolId, null)
+                : System.IO.Path.GetDirectoryName(script) ?? "";
+        }
 
         AppendExtra($"▶ {label}");
         AppendExtra($"  $ {System.IO.Path.GetFileName(script)} {arguments}".TrimEnd());
@@ -492,15 +530,31 @@ public partial class PythonToolPanelView : UserControl
                 FileName = exe,
                 // -u: redirected stdout is block-buffered by Python, so without
                 // it the Extra/Claim log stayed empty until the script exited.
-                Arguments = $"-u \"{script}\" {arguments}",
+                // A toolbox run replaces the script path with the loader, which
+                // reads the tool's code off stdin (nothing touches the disk).
                 WorkingDirectory = work,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = toolboxEntry is not null,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 StandardOutputEncoding = System.Text.Encoding.UTF8,
                 StandardErrorEncoding = System.Text.Encoding.UTF8
             };
+
+            if (toolboxEntry is not null)
+            {
+                if (!ToolboxRunner.ApplyEnvironment(psi, toolboxEntry))
+                {
+                    AppendExtra("✗ the panel's embedded scripts could not be read - reinstall the panel.");
+                    return;
+                }
+                psi.Arguments = ToolboxRunner.RawPrefix + " " + arguments;
+            }
+            else
+            {
+                psi.Arguments = $"-u \"{script}\" {arguments}";
+            }
 
             // Extra/Claim used to be the one launcher that forgot to tell the
             // script where the panel stores this tool's accounts.  claim_advanced.py
@@ -532,6 +586,23 @@ public partial class PythonToolPanelView : UserControl
             ProcessGuard.Adopt(proc);
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
+
+            if (toolboxEntry is not null)
+            {
+                // Hand the loader and the archive over, then EOF. The readers
+                // are already pumping, so the child can never block on us.
+                try
+                {
+                    await ToolboxRunner.WriteStdinAsync(proc.StandardInput.BaseStream,
+                            Array.Empty<string>())
+                        .ConfigureAwait(true);
+                }
+                catch
+                {
+                    // The child may already have exited; the exit code tells why.
+                }
+                try { proc.StandardInput.Close(); } catch { /* already gone */ }
+            }
 
             try
             {
@@ -895,7 +966,7 @@ public partial class PythonToolPanelView : UserControl
         // this ONE account (VISIBLE, --open) and streams its output below.
         var settings = ToolSettingsStore.For(_toolId);
         var loginScript = settings.LoginScriptPath ?? "";
-        if (!string.IsNullOrWhiteSpace(loginScript) && File.Exists(loginScript))
+        if (ScriptAvailable(loginScript, login: true))
         {
             _ = RunLoginScriptForRowAsync(row, sender as Button);
             return;
@@ -950,7 +1021,11 @@ public partial class PythonToolPanelView : UserControl
     {
         var settings = ToolSettingsStore.For(_toolId);
         var script = settings.LoginScriptPath ?? "";
-        if (string.IsNullOrWhiteSpace(script) || !File.Exists(script))
+
+        // No .py on disk means a shipped install: the same login script comes
+        // out of the panel's own toolbox instead.
+        var toolboxEntry = ToolboxRunner.LoginEntryFor(_toolId, script);
+        if (toolboxEntry is null && (string.IsNullOrWhiteSpace(script) || !File.Exists(script)))
         {
             AppendLog($"⚠ Login script not found ({script}) — nothing to run.");
             return;
@@ -961,12 +1036,29 @@ public partial class PythonToolPanelView : UserControl
             exe = _driver.ResolvedPythonPath();
 
         var work = settings.ToolWorkingDirectory ?? "";
-        if (string.IsNullOrWhiteSpace(work) || !Directory.Exists(work))
-            work = Path.GetDirectoryName(script) ?? "";
+        if (!Directory.Exists(work))
+        {
+            work = toolboxEntry is not null
+                ? ToolboxRunner.WorkingDirectory(_toolId, null)
+                : Path.GetDirectoryName(script) ?? "";
+        }
 
         // Point the login script at just this row. SyncLoginTarget keeps every
         // other .env key intact (mail settings etc. are never clobbered).
-        _driver.SyncLoginTarget(settings, row.EmailUsed);
+        //
+        // A toolbox run has no script folder to write into - the configured
+        // path is a dev location that must NOT be recreated on a customer
+        // machine - so the .env goes to the same real folder the mounted script
+        // reads its state from.
+        _driver.SyncLoginTarget(
+            toolboxEntry is null
+                ? settings
+                : new ToolSettings
+                {
+                    ToolWorkingDirectory = work,
+                    LoginScriptPath = Path.Combine(work, Path.GetFileName(toolboxEntry)),
+                },
+            row.EmailUsed);
 
         // Where the session should open: the per-tool URL the user can edit on
         // this very Login tab. Prefer whatever is in the box RIGHT NOW (so typing
@@ -1010,9 +1102,22 @@ public partial class PythonToolPanelView : UserControl
             // -u first: redirected stdout is block-buffered, so without it the
             // live log showed nothing until the login script exited.
             psi.ArgumentList.Add("-u");
-            // Script path MUST be the first positional argument so python.exe
-            // doesn't try to interpret --open as one of its own options.
-            psi.ArgumentList.Add(script);
+            if (toolboxEntry is not null)
+            {
+                // The script travels inside the panel; python gets the loader
+                // and the archive arrives on stdin below.
+                if (!ToolboxRunner.TryConfigure(psi, toolboxEntry))
+                {
+                    AppendLog("⚠ the panel's embedded scripts could not be read — reinstall the panel.");
+                    return;
+                }
+            }
+            else
+            {
+                // Script path MUST be the first positional argument so python.exe
+                // doesn't try to interpret --open as one of its own options.
+                psi.ArgumentList.Add(script);
+            }
             psi.ArgumentList.Add("--open");
             // A visible browser that STAYS OPEN until the user closes it (the
             // script enforces a generous cap, e.g. 30 min, as a safety net).
@@ -1072,6 +1177,19 @@ public partial class PythonToolPanelView : UserControl
             ProcessGuard.Adopt(proc);
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
+            if (toolboxEntry is not null)
+            {
+                try
+                {
+                    await ToolboxRunner.WriteStdinAsync(proc.StandardInput.BaseStream,
+                            Array.Empty<string>())
+                        .ConfigureAwait(true);
+                }
+                catch
+                {
+                    // The child may already have exited; the exit code tells why.
+                }
+            }
             // Close stdin: a one-shot login script ignores it, an interactive
             // one (Zloginv2) must not sit forever waiting on input().
             try { proc.StandardInput.Close(); } catch { /* already gone */ }
@@ -1765,15 +1883,21 @@ public partial class PythonToolPanelView : UserControl
         AppendLog(File.Exists(pyExe) ? "  ✓ python.exe found"
                                      : "  ⚠ python.exe not found — add to PATH or set PythonExePath");
 
-        // create script
+        // create script - on disk in a dev checkout, inside the panel otherwise
         AppendLog($"  create.py    → {s.CreateScriptPath ?? "(empty)"}");
-        AppendLog(!string.IsNullOrWhiteSpace(s.CreateScriptPath) && File.Exists(s.CreateScriptPath)
-            ? "  ✓ create script found" : "  ⚠ create script missing or empty");
+        AppendLog(!ScriptAvailable(s.CreateScriptPath, login: false)
+            ? "  ⚠ create script missing or empty"
+            : File.Exists(s.CreateScriptPath)
+                ? "  ✓ create script found"
+                : "  ✓ create script ships inside the panel");
 
         // login script
         AppendLog($"  login.py     → {s.LoginScriptPath ?? "(empty)"}");
-        AppendLog(!string.IsNullOrWhiteSpace(s.LoginScriptPath) && File.Exists(s.LoginScriptPath)
-            ? "  ✓ login script found" : "  ⚠ login script missing or empty");
+        AppendLog(!ScriptAvailable(s.LoginScriptPath, login: true)
+            ? "  ⚠ login script missing or empty"
+            : File.Exists(s.LoginScriptPath)
+                ? "  ✓ login script found"
+                : "  ✓ login script ships inside the panel");
 
         // working dir
         var workOk = !string.IsNullOrWhiteSpace(s.ToolWorkingDirectory) && Directory.Exists(s.ToolWorkingDirectory);

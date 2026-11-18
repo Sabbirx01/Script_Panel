@@ -111,8 +111,23 @@ public sealed class PythonToolDriver : IToolDriver
             return validation;
         }
 
-        var script = settings.CreateScriptPath!;
-        var workDir = settings.ToolWorkingDirectory!;
+        // Which entry this run uses: the operator's own script when it is on
+        // disk (a dev checkout behaves exactly as before), otherwise the copy
+        // inside the panel's encrypted toolbox - which has no folder of its
+        // own, so the run works out of the tool's accounts folder instead.
+        var toolboxEntry = ToolboxRunner.CreateEntryFor(ToolId, settings.CreateScriptPath);
+        var workDir = toolboxEntry is null
+            ? settings.ToolWorkingDirectory!
+            : ToolboxRunner.WorkingDirectory(ToolId, settings.ToolWorkingDirectory);
+        var script = toolboxEntry is null
+            ? settings.CreateScriptPath!
+            : Path.Combine(workDir, Path.GetFileName(toolboxEntry));
+
+        // The .env must land in a REAL folder the script will look at. A
+        // toolbox run has no script folder, so use the run folder for both.
+        var envSettings = toolboxEntry is null
+            ? settings
+            : new ToolSettings { ToolWorkingDirectory = workDir, CreateScriptPath = script };
 
         // 1. Sync the script's .env with the keys the active mode needs
         //    (GMAIL_USER for the pool-based modes, TEMP_MAIL_ADDRESS for
@@ -125,7 +140,7 @@ public sealed class PythonToolDriver : IToolDriver
         //    environment: panel_mail.load_env() overlays os.environ on top of
         //    the .env files, so two parallel create runs (the "At once" wave
         //    mode) each keep their OWN address even though they share one .env.
-        var envKeys = TrySyncEnv(ToolId, settings, source, email);
+        var envKeys = TrySyncEnv(ToolId, envSettings, source, email);
 
         // The shared proxy list plus this run's ON/OFF state.  The tools read
         // PANEL_PROXY_FILE through _shared/proxy_pool.py (which panel_browser
@@ -170,7 +185,8 @@ public sealed class PythonToolDriver : IToolDriver
         if (source == MailSource.TempMail)
             liveLog?.Invoke($"  → temp-mail mode: skipping GMAIL_USER; script will poll Guerrilla API for OTP.");
 
-        return await RunPythonAsync(script, args, stdinLines, workDir, timeout, liveLog, ct, envKeys)
+        return await RunPythonAsync(script, args, stdinLines, workDir, timeout, liveLog, ct, envKeys,
+                toolboxEntry)
             .ConfigureAwait(false);
     }
 
@@ -187,8 +203,15 @@ public sealed class PythonToolDriver : IToolDriver
             return validation;
         }
 
-        var script = settings.LoginScriptPath!;
-        var workDir = settings.ToolWorkingDirectory!;
+        // Same toolbox rule as the create path: the operator's own script when
+        // it is on disk, otherwise the copy inside this executable.
+        var toolboxEntry = ToolboxRunner.LoginEntryFor(ToolId, settings.LoginScriptPath);
+        var workDir = toolboxEntry is null
+            ? settings.ToolWorkingDirectory!
+            : ToolboxRunner.WorkingDirectory(ToolId, settings.ToolWorkingDirectory);
+        var script = toolboxEntry is null
+            ? settings.LoginScriptPath!
+            : Path.Combine(workDir, Path.GetFileName(toolboxEntry));
 
         // Hand the cookies to the script the only way it can receive them: in its
         // OWN cookie file, under the exact address the script is about to be told
@@ -209,7 +232,10 @@ public sealed class PythonToolDriver : IToolDriver
         // The script does still need to know WHICH account this run is about
         // (tool4's minimax_login.py verifies exactly that one cookie set), so
         // refresh only that pair of keys.
-        SyncLoginTarget(settings, email);
+        SyncLoginTarget(toolboxEntry is null
+            ? settings
+            : new ToolSettings { ToolWorkingDirectory = workDir, LoginScriptPath = script },
+            email);
 
         var args = BuildArgs(settings.LoginArgTemplate, source: MailSource.DottedGmail,
                              count: 0, forceNoProxy: false, headless: settings.Headless);
@@ -234,7 +260,8 @@ public sealed class PythonToolDriver : IToolDriver
         var timeout = TimeSpan.FromMinutes(30);   // login + browser keep-open can run a while
 
         Log.Info(ToolId, $"python {Path.GetFileName(script)} -- login (cookies replayed)");
-        return await RunPythonAsync(script, args, stdinLines, workDir, timeout, liveLog: null, ct)
+        return await RunPythonAsync(script, args, stdinLines, workDir, timeout, liveLog: null, ct,
+                toolboxEntry: toolboxEntry)
             .ConfigureAwait(false);
     }
 
@@ -302,7 +329,7 @@ public sealed class PythonToolDriver : IToolDriver
 
     // --------------------------------------------------------------- internals
 
-    private static DriverResult? Validate(ToolSettings s, bool wantLogin)
+    private DriverResult? Validate(ToolSettings s, bool wantLogin)
     {
         if (string.IsNullOrWhiteSpace(s.PythonExePath) && !PythonOnPath())
             return DriverResult.Fail(
@@ -316,16 +343,28 @@ public sealed class PythonToolDriver : IToolDriver
         var script = wantLogin ? s.LoginScriptPath : s.CreateScriptPath;
         if (string.IsNullOrWhiteSpace(script) || !File.Exists(script))
         {
+            // The script travels INSIDE this executable (see ToolboxRunner), so
+            // on a shipped install there is no .py to point at - and nothing
+            // else to check either. A dev checkout that still has tools\ on
+            // disk never reaches this branch.
+            if (wantLogin ? ToolboxRunner.HasLogin(ToolId) : ToolboxRunner.HasCreate(ToolId))
+                return null;
+
             // The download page used to hand out the update ZIP, which carries
             // the panel exe only - no tools\, no runtime\. A panel installed from
             // that archive looks completely normal and fails every run here, so
             // say what actually fixes it instead of pointing at a settings box
             // the customer has no reason to open.
-            var looksUpdateOnly = !Directory.Exists(Path.Combine(AppPaths.AppRoot, "tools"));
+            //
+            // "Is there a tools\ folder?" cannot answer that any more: a finished
+            // install has no tools\ folder at all, because the scripts live inside
+            // the exe. What separates a real install from a partial one is whether
+            // the exe carries that archive - i.e. ToolboxRunner.Available.
+            var looksUpdateOnly = !ToolboxRunner.Available;
             return DriverResult.Fail(
                 $"{(wantLogin ? "Login" : "Create")} script not found at: {script ?? "(empty)"}  " +
                 (looksUpdateOnly
-                    ? "This PC has the panel without its tool files - it was installed from the update ZIP. " +
+                    ? "This copy of the panel carries no tool files at all - it was installed from the update ZIP. " +
                       "Close the panel and run DeveloperXPanel-Setup.exe from the download page to install the full package."
                     : "Set it in Global Settings → Tool Paths."));
         }
@@ -829,7 +868,8 @@ public sealed class PythonToolDriver : IToolDriver
         string script, List<string> args, string[] stdinLines,
         string workDir, TimeSpan timeout,
         Action<string>? liveLog, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? envOverrides = null)
+        IReadOnlyDictionary<string, string>? envOverrides = null,
+        string? toolboxEntry = null)
     {
         var python = ResolvePython(Settings);
 
@@ -887,15 +927,30 @@ public sealed class PythonToolDriver : IToolDriver
         // Belt & braces for anything the script shells out to.
         psi.Environment["PYTHONUNBUFFERED"] = "1";
 
-        // The script path MUST be the first positional argument, otherwise
-        // python.exe interprets our template flags (e.g. --count) as its own
-        // options and prints "unknown option --count" + the usage line.
-        psi.ArgumentList.Add(script);
+        string logName;
+        if (toolboxEntry is not null)
+        {
+            // The script is not a file on disk: python gets the little loader
+            // and the entry name travels in the environment (ToolboxRunner).
+            if (!ToolboxRunner.TryConfigure(psi, toolboxEntry))
+                return DriverResult.Fail(
+                    "The panel's embedded tool package could not be read, so the script inside it " +
+                    "cannot run. Reinstall the panel with DeveloperXPanel-Setup.exe.");
+            logName = toolboxEntry;
+        }
+        else
+        {
+            // The script path MUST be the first positional argument, otherwise
+            // python.exe interprets our template flags (e.g. --count) as its own
+            // options and prints "unknown option --count" + the usage line.
+            psi.ArgumentList.Add(script);
+            logName = Path.GetFileName(script);
+        }
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         var argLine = string.Join(' ', args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-        Log.Info(ToolId, $"  $ python {Path.GetFileName(script)} {argLine}");
-        liveLog?.Invoke($"$ python {Path.GetFileName(script)} {argLine}");
+        Log.Info(ToolId, $"  $ python {logName} {argLine}");
+        liveLog?.Invoke($"$ python {logName} {argLine}");
 
         // Wipe the in-memory account cache so any new row is the script's, not
         // a stale one we held from before.
@@ -916,14 +971,27 @@ public sealed class PythonToolDriver : IToolDriver
 
         // Pipe stdin (the script may read with input(); closing EOF lets it
         // exit its read loop after we've fed the values it needs).
+        //
+        // A toolbox run starts with a binary preamble on that same pipe - the
+        // loader, then the archive - so it must be written to the raw stream
+        // (never through the text writer, which would mangle the bytes).
         try
         {
-            foreach (var line in stdinLines)
+            if (toolboxEntry is not null)
             {
-                await proc.StandardInput.WriteLineAsync(line).ConfigureAwait(false);
+                await ToolboxRunner.WriteStdinAsync(proc.StandardInput.BaseStream, stdinLines)
+                    .ConfigureAwait(false);
+                proc.StandardInput.BaseStream.Close();
             }
-            await proc.StandardInput.FlushAsync().ConfigureAwait(false);
-            proc.StandardInput.Close();
+            else
+            {
+                foreach (var line in stdinLines)
+                {
+                    await proc.StandardInput.WriteLineAsync(line).ConfigureAwait(false);
+                }
+                await proc.StandardInput.FlushAsync().ConfigureAwait(false);
+                proc.StandardInput.Close();
+            }
         }
         catch { /* the script may have already exited; ignore */ }
 

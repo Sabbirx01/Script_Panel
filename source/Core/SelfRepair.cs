@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using AISuitePanel.Automation;
 
 namespace AISuitePanel;
 
@@ -38,12 +39,93 @@ internal static class SelfRepair
     private static bool _running;
 
     /// <summary>
-    /// True when this copy cannot possibly run a tool: the archive it came from
-    /// had no <c>tools\</c> folder, or no Python runtime to run them with.
+    /// True when this copy cannot possibly run a tool: it carries neither the
+    /// embedded toolbox nor a <c>tools\</c> folder, or there is no Python
+    /// runtime to run them with.
+    ///
+    /// <para>A shipped install carries the tools INSIDE the panel executable
+    /// (see <see cref="Automation.ToolboxRunner"/>), so the old "no tools\
+    /// folder means broken" test would condemn every finished install and send
+    /// it round a 600 MB repair loop.</para>
     /// </summary>
-    public static bool NeedsRepair =>
-        !Directory.Exists(Path.Combine(AppPaths.AppRoot, "tools")) ||
-        !File.Exists(Path.Combine(AppPaths.AppRoot, "runtime", "python", "python.exe"));
+    public static bool NeedsRepair => MissingPieces().Count > 0;
+
+    /// <summary>
+    /// Everything a finished install must have on disk, by name.
+    ///
+    /// <para>A repair costs a 600 MB download, so this only lists things whose
+    /// absence really does stop the tools from running: the interpreter, the
+    /// browser build it drives, the four tools inside the executable, and the
+    /// fingerprint file the updater reads. It is deliberately checked against
+    /// <see cref="AppPaths.AppFolderRoot"/> - the folder the payload was resolved
+    /// to - not the exe's own folder, which for a launcher-started copy is a
+    /// temporary directory.</para>
+    /// </summary>
+    public static IReadOnlyList<string> MissingPieces()
+    {
+        var missing = new List<string>();
+        try
+        {
+            var root = AppPaths.AppFolderRoot;
+
+            if (!File.Exists(Path.Combine(root, "runtime", "python", "python.exe")))
+                missing.Add(@"runtime\python\python.exe");
+
+            if (!HasBrowser(root))
+                missing.Add(@"runtime\ms-playwright (the Chromium build)");
+
+            if (!ToolboxRunner.Available)
+            {
+                // A dev checkout runs its scripts straight off the disk; only a
+                // shipped install has to carry them inside the exe.
+                if (!Directory.Exists(Path.Combine(root, "tools"))) missing.Add("the tool package");
+            }
+            else
+            {
+                foreach (var id in ToolboxRunner.ToolIds)
+                {
+                    if (!ToolboxRunner.HasCreate(id) || !ToolboxRunner.HasLogin(id))
+                        missing.Add($"{id} scripts (inside the exe)");
+                }
+            }
+
+            // Only a bundle that actually names a release needs it; an older
+            // loose-file install is handled by the bundle update, not by repairs.
+            if (File.Exists(Path.Combine(root, "portable.txt")) &&
+                !File.Exists(Path.Combine(root, "tools.manifest")))
+            {
+                missing.Add("tools.manifest");
+            }
+        }
+        catch
+        {
+            // A check that cannot run must never condemn a healthy install.
+        }
+        return missing;
+    }
+
+    /// <summary>
+    /// True when a Chromium build the tools can launch is actually present.
+    /// A customer who pointed Playwright at their own browser folder is left
+    /// alone: the folder the bundle ships is then genuinely not needed.
+    /// </summary>
+    private static bool HasBrowser(string root)
+    {
+        try
+        {
+            var external = Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH");
+            if (!string.IsNullOrWhiteSpace(external) && Directory.Exists(external)) return true;
+
+            var dir = Path.Combine(root, "runtime", "ms-playwright");
+            if (!Directory.Exists(dir)) return false;
+            return Directory.EnumerateDirectories(dir)
+                .Any(d => Path.GetFileName(d).StartsWith("chromium", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return true;                        // never condemn over a probe
+        }
+    }
 
     /// <summary>
     /// Result of the last deep check: null = not checked yet, true = the files
@@ -128,6 +210,13 @@ internal static class SelfRepair
             var manifest = Path.Combine(AppPaths.AppRoot, "tools.manifest");
             var toolsDir = Path.Combine(AppPaths.AppRoot, "tools");
 
+            // The tools travel inside the panel now: the payload is part of the
+            // exe, which the launcher verifies before the panel even starts, so
+            // there is no tree of scripts on disk for an antivirus to take a
+            // file out of. Only a copy that still keeps its tools as loose files
+            // has anything this can check.
+            if (!Directory.Exists(toolsDir)) return Array.Empty<string>();
+
             // No manifest at all: an install from before 2.2.8, or from the
             // update zip. Both need the full package, but that is the bundle
             // update's call, not a "broken file" verdict.
@@ -201,7 +290,7 @@ internal static class SelfRepair
 
             if (AttemptedRecently())
             {
-                Log.Warn("", "This copy is missing its tool files and a repair was already tried today.");
+                Log.Warn("", "This copy is missing " + string.Join(", ", MissingPieces()) + " and a repair was already tried today.");
                 Status?.Invoke("This copy is incomplete", Describe(false));
                 return;
             }
@@ -219,7 +308,7 @@ internal static class SelfRepair
             var version = Path.GetFileName(new Uri(setupUrl).AbsolutePath); // file name only
 
             Status?.Invoke("Repairing this install",
-                "This copy has no tool files. Downloading the full installer once - the panel will restart by itself.");
+                Describe(false) + " Downloading the full installer once - the panel will restart by itself.");
 
             var target = Path.Combine(Path.GetTempPath(), "DeveloperXPanel-Setup.exe");
             var ok = await DownloadAsync(setupUrl, target, ct).ConfigureAwait(false);
@@ -244,7 +333,8 @@ internal static class SelfRepair
             WriteMarker(version, "installing");
 
             var start = MessageBox.Show(
-                "This copy of the panel is missing its tool files, which is why every run fails.\n\n" +
+                "This copy of the panel cannot run the tools because these are missing:\n\n" +
+                "  - " + string.Join("\n  - ", MissingPieces()) + "\n\n" +
                 "The full installer has been downloaded and verified. The panel will close, install, and reopen.\n\n" +
                 "Install now?",
                 Branding.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question);
@@ -277,13 +367,14 @@ internal static class SelfRepair
     /// </summary>
     private static string Describe(bool installerMissing)
     {
-        var what = BrokenTools.Count > 0
-            ? string.Join(", ", BrokenTools.Take(3)) + (BrokenTools.Count > 3 ? ", ..." : "")
-            : @"tools\";
+        var pieces = MissingPieces();
+        var what = pieces.Count > 0
+            ? string.Join(", ", pieces.Take(3)) + (pieces.Count > 3 ? ", ..." : "")
+            : BrokenTools.Count > 0
+                ? string.Join(", ", BrokenTools.Take(3)) + (BrokenTools.Count > 3 ? ", ..." : "")
+                : "its tool files";
 
-        var text = BrokenTools.Count > 0
-            ? $"These files are missing or were changed on this PC: {what}. An antivirus often removes tool scripts."
-            : $"This copy has no {what} folder.";
+        var text = $"This copy is missing {what}. An antivirus often removes these.";
 
         return installerMissing
             ? text + " The installer could not be located - get DeveloperXPanel-Setup.exe from the download page."

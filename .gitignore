@@ -109,3 +109,12 @@ _preview/
 *.bak
 *.old
 *_recon_*.png
+
+# ---------------------------------------------------------------------------
+# Local scratch that must NEVER reach the public repo: the two tool scripts in
+# "MIinimax update" are plain copies of protected source, and Resume Update.txt
+# is a working log that describes how the toolbox is packed and unlocked.
+MIinimax update/
+Resume Update.txt
+z-domcheck.py
+build-enc.cmd

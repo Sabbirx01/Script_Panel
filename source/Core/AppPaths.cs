@@ -59,13 +59,13 @@ public static class AppPaths
             // The exe's own folder first (a normal install and output\ both land
             // here), then everything else that can identify the payload with
             // certainty - see PayloadRootCandidates. Returning the first folder
-            // that actually holds a tools\ folder is what keeps the panel's
-            // accounts folder, the tools and the runtime pointing at ONE place.
+            // that actually holds the payload is what keeps the panel's accounts
+            // folder and the runtime pointing at ONE place.
             try
             {
                 foreach (var candidate in PayloadRootCandidates())
                 {
-                    if (!HasTools(candidate)) continue;
+                    if (!HasPayload(candidate)) continue;
                     RememberPayloadRoot(candidate);
                     return candidate;
                 }
@@ -79,13 +79,37 @@ public static class AppPaths
         }
     }
 
-    /// <summary>True when <paramref name="dir"/> actually holds a <c>tools\</c> folder.</summary>
-    private static bool HasTools(string dir)
+    /// <summary>
+    /// True when <paramref name="dir"/> is really the payload root - the folder
+    /// the panel's own files belong to.
+    /// </summary>
+    /// <para>A shipped install no longer carries a <c>tools\</c> folder: the four
+    /// tools' source is packed into the panel executable, so the marker that used
+    /// to identify a payload root is gone. Keying on it alone silently degraded
+    /// every real install to "nothing resolved" - the root was then never
+    /// remembered, and a launch from an unexpected folder (a sandboxed launcher
+    /// that runs a temp copy of the exe) would put the customer's accounts and
+    /// licence somewhere they are never read again. So any of the things the
+    /// bundle actually ships counts, and a dev checkout still matches on
+    /// <c>tools\</c>.</para>
+    private static bool HasPayload(string dir)
     {
+        if (string.IsNullOrWhiteSpace(dir)) return false;
+
         try
         {
-            return !string.IsNullOrWhiteSpace(dir) &&
-                   Directory.Exists(Path.Combine(dir, "tools"));
+            var root = dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            // A dev checkout.
+            if (Directory.Exists(Path.Combine(root, "tools"))) return true;
+
+            // A shipped bundle: the fingerprint of the payload inside the exe,
+            // the interpreter the tools run on, or the portable marker.
+            if (File.Exists(Path.Combine(root, "tools.manifest"))) return true;
+            if (File.Exists(Path.Combine(root, "portable.txt"))) return true;
+            if (File.Exists(Path.Combine(root, "runtime", "python", "python.exe"))) return true;
+
+            return false;
         }
         catch
         {
@@ -364,6 +388,19 @@ public static class AppPaths
         if (browsers.Length > 0)
         {
             yield return new KeyValuePair<string, string>("PLAYWRIGHT_BROWSERS_PATH", browsers);
+        }
+
+        // One Node binary, not two. The C# driver normally insists on its own
+        // .playwright\node\<platform>\node.exe, but that file was a byte-for-byte
+        // copy of the node.exe the Python playwright package already ships - the
+        // same 1.62.0 driver, 88 MB twice in every download. The bundle now keeps
+        // the Python one and tells the C# side where it is, which the driver
+        // honours through PLAYWRIGHT_NODEJS_PATH.
+        var node = Path.Combine(AppFolderRoot, "runtime", "python", "Lib",
+                                "site-packages", "playwright", "driver", "node.exe");
+        if (File.Exists(node))
+        {
+            yield return new KeyValuePair<string, string>("PLAYWRIGHT_NODEJS_PATH", node);
         }
     }
 

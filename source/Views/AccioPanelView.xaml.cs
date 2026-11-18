@@ -488,20 +488,83 @@ public partial class AccioPanelView : UserControl
         });
     }
 
+    /// <summary>
+    /// Opens accio for one account in a real browser window.
+    ///
+    /// <para>When the operator keeps accio's prebuilt <c>Accio.exe</c> beside
+    /// the sources it is used, exactly as before. A shipped install has no such
+    /// binary - the scripts travel inside the panel - so the same request goes
+    /// to the archived <c>login.py</c>, whose default is to log the account in
+    /// and KEEP THE BROWSER OPEN. Same outcome for the operator, no folder of
+    /// Python files on the disk.</para>
+    /// </summary>
     private static void LaunchAccioGui(string email)
     {
-        var startInfo = new ProcessStartInfo
+        var exePath = AccioToolDriver.AccioExePath;
+        if (File.Exists(exePath))
         {
-            FileName         = AccioToolDriver.AccioExePath,
-            WorkingDirectory = AccioToolDriver.AccioRoot,
-            UseShellExecute  = false,
-            CreateNoWindow   = false
-        };
-        startInfo.ArgumentList.Add("--keep-open");
-        startInfo.ArgumentList.Add("--email-override");
-        startInfo.ArgumentList.Add(email);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName         = exePath,
+                WorkingDirectory = AccioToolDriver.AccioRoot,
+                UseShellExecute  = false,
+                CreateNoWindow   = false
+            };
+            startInfo.ArgumentList.Add("--keep-open");
+            startInfo.ArgumentList.Add("--email-override");
+            startInfo.ArgumentList.Add(email);
 
-        Process.Start(startInfo);
+            Process.Start(startInfo);
+            return;
+        }
+
+        var entry = ToolboxRunner.LoginEntry(AccioToolDriver.ToolKey);
+        if (entry is null)
+        {
+            Log.Warn(AccioToolDriver.ToolKey,
+                "No Accio.exe beside the scripts and no archived accio login, " +
+                "so no browser could be opened for " + email + ".");
+            return;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName               = PythonToolDriver.ResolvePythonFor(AccioToolDriver.ToolKey),
+            WorkingDirectory       = AccioToolDriver.AccioRoot,
+            UseShellExecute        = false,
+            CreateNoWindow         = false,
+            RedirectStandardInput  = true
+        };
+        if (!ToolboxRunner.TryConfigure(psi, entry))
+        {
+            Log.Warn(AccioToolDriver.ToolKey,
+                "The panel's embedded accio scripts could not be read - reinstall the panel.");
+            return;
+        }
+        psi.ArgumentList.Add("--email");
+        psi.ArgumentList.Add(email);
+        foreach (var kv in AppPaths.RuntimeEnvironment()) psi.Environment[kv.Key] = kv.Value;
+
+        var proc = new Process { StartInfo = psi };
+        proc.Start();
+
+        // The loader and the archive travel on stdin, so they have to be handed
+        // over before login.py starts; the window stays open on its own after
+        // that, which is why this is fire-and-forget.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ToolboxRunner.WriteStdinAsync(proc.StandardInput.BaseStream,
+                        Array.Empty<string>())
+                    .ConfigureAwait(false);
+                proc.StandardInput.BaseStream.Close();
+            }
+            catch
+            {
+                // the child may already have exited
+            }
+        });
     }
 
     private static string NormalisePwDomain(string domain)
@@ -1735,10 +1798,13 @@ public partial class AccioPanelView : UserControl
                 "private store instead. Payload root resolved to " + AppPaths.AppFolderRoot);
         }
 
-        // ---- 1) Accio.exe reachable? ----------------------------------
+        // ---- 1) Accio's code reachable? --------------------------------
         var exePath = AccioToolDriver.AccioExePath;
         if (File.Exists(exePath))
             AddRow("PASS", PassBrush, $"Accio.exe found at {exePath}");
+        else if (ToolboxRunner.HasCreate(AccioToolDriver.ToolKey))
+            AddRow("PASS", PassBrush,
+                "Accio's scripts ship inside the panel — no Accio.exe needed");
         else
             AddRow("FAIL", FailBrush, $"Accio.exe NOT found — set AccioRoot in AccioToolDriver.cs");
 

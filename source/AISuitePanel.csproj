@@ -13,9 +13,9 @@
     <Product>Developer X Bulk Acc Panel</Product>
     <Company>Developer X</Company>
     <Description>Developer X Bulk Acc Panel - activation, dashboard and per-tool panels.</Description>
-    <Version>2.3.0</Version>
-    <AssemblyVersion>2.3.0.0</AssemblyVersion>
-    <FileVersion>2.3.0.0</FileVersion>
+    <Version>2.3.1</Version>
+    <AssemblyVersion>2.3.1.0</AssemblyVersion>
+    <FileVersion>2.3.1.0</FileVersion>
     <Copyright>Copyright (c) 2026 Developer X</Copyright>
 
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -43,6 +43,15 @@
          the bundle â€” so the panel could never use the browser we ship and its
          login tab needed a separate `playwright install` on every customer PC. -->
     <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Every tool script, packed into one AES-256 blob, travels inside this
+         executable - so a customer's install folder holds no .py at all.
+         Both files are produced by temp\build-toolbox.ps1 (which also writes
+         Core\Automation\ToolboxKey.g.cs); run it before building. -->
+    <EmbeddedResource Include="Resources\toolbox.enc" />
+    <EmbeddedResource Include="Resources\toolbox_bootstrap.py" />
   </ItemGroup>
 
 </Project>

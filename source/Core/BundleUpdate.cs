@@ -105,6 +105,36 @@ internal static class BundleUpdate
                 return;
             }
 
+            // A package is only worth fetching when it is genuinely NEWER - or
+            // when this install really was updated from the feed and only the
+            // panel exe was swapped, leaving its tools behind.
+            //
+            // Without this test every freshly built copy downloaded the whole
+            // 600 MB package at its first start: the build carries a different
+            // tools payload than the release it names itself after, so the two
+            // hashes disagree and the panel read that as "the tools changed".
+            // It then staged a package for the SAME version - which, when the
+            // published one is older, silently rolls the customer back.
+            var published = ParseVersion(check.AvailableVersion);
+            var running = ParseVersion(UpdateService.CurrentVersion);
+            var cameFromFeed = File.Exists(Path.Combine(AppPaths.Root, "update-version.txt"));
+
+            if (published < running)
+            {
+                Log.Warn("", $"Published package {check.AvailableVersion} is older than " +
+                             $"this install ({UpdateService.CurrentVersion}) - not downloading.");
+                return;
+            }
+
+            if (published == running && !cameFromFeed && local.Length > 0)
+            {
+                Log.Warn("", $"This build's tools differ from the published " +
+                             $"{check.AvailableVersion} package, but the version is the same " +
+                             "and this copy never came from the feed - not downloading. " +
+                             "Publish a new version to ship this payload.");
+                return;
+            }
+
             var setupUrl = string.IsNullOrWhiteSpace(check.SetupUrl)
                 ? await UpdateService.LatestSetupUrlAsync(ct).ConfigureAwait(false)
                 : check.SetupUrl;
@@ -164,6 +194,14 @@ internal static class BundleUpdate
         {
             _running = false;
         }
+    }
+
+    /// <summary>"2.3.1" / "v2.3.1" -> Version; anything unreadable counts as 0.</summary>
+    private static Version ParseVersion(string value)
+    {
+        var clean = new string((value ?? "").Trim().TrimStart('v', 'V')
+            .TakeWhile(c => char.IsDigit(c) || c == '.').ToArray());
+        return Version.TryParse(clean, out var parsed) ? parsed : new Version(0, 0, 0);
     }
 
     private static bool AlreadyStaged(string bundleTools)

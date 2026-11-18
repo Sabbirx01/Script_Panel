@@ -82,6 +82,20 @@ public sealed class AccioToolDriver : IToolDriver
                 }
             }
 
+            // Nothing on disk anywhere: this is a shipped install, whose accio
+            // scripts travel INSIDE the panel (see ToolboxRunner). Everything
+            // the panel keeps on accio's behalf - .env, _fallback_proxies.txt,
+            // alice.json, accounts\accounts.json - then belongs in the tool's
+            // accounts folder beside the exe, which is exactly the folder the
+            // archived script is told to write to as well. Pointing at
+            // DevRoot instead would name a folder that only exists on the
+            // developer's own PC, so the panel would read and write files
+            // nobody else ever looks at.
+            if (ToolboxRunner.Has(ToolKey))
+            {
+                return ToolboxRunner.WorkingDirectory(ToolKey, configured);
+            }
+
             return DevRoot;
         }
     }
@@ -105,6 +119,30 @@ public sealed class AccioToolDriver : IToolDriver
             // a missing / unreadable folder is not an entry point
         }
         return "";
+    }
+
+    /// <summary>
+    /// What to run, and where. Returns the working directory, the on-disk entry
+    /// point (a prebuilt <c>Accio.exe</c> or a checked-out <c>create.py</c>, ""
+    /// when neither is on disk) and - when there is nothing on disk, i.e. a
+    /// shipped install whose sources live INSIDE the panel - the entry inside
+    /// the embedded toolbox archive.
+    /// </summary>
+    private static (string Root, string Entry, string? ToolboxEntry) ResolveLaunch()
+    {
+        var root = AccioRoot;
+        var entry = Entry(root);
+        if (entry.Length > 0)
+            return (root, entry, null);
+
+        var toolboxEntry = ToolboxRunner.CreateEntry(ToolKey);
+        if (toolboxEntry is null)
+            return (root, "", null);
+
+        // The script travels inside the panel now, so run it from a real folder
+        // beside the exe - accio writes its accounts and screenshots there.
+        var configured = ToolSettingsStore.For(ToolKey).ToolWorkingDirectory;
+        return (ToolboxRunner.WorkingDirectory(ToolKey, configured), "", toolboxEntry);
     }
 
     /// <summary>Full path to whichever entry point accio resolves to.</summary>
@@ -217,9 +255,8 @@ public sealed class AccioToolDriver : IToolDriver
         if (string.IsNullOrWhiteSpace(email))
             return DriverResult.Fail("No address was supplied by the mail router.");
 
-        var root = AccioRoot;
-        var entry = Entry(root);
-        if (entry.Length == 0)
+        var (root, entry, toolboxEntry) = ResolveLaunch();
+        if (entry.Length == 0 && toolboxEntry is null)
         {
             return DriverResult.Fail(
                 $"Accio was not found under: {root}  -  set this tool's working " +
@@ -261,14 +298,16 @@ public sealed class AccioToolDriver : IToolDriver
         var args = BuildArgs(email, source, forceNoProxy, xTrick, createUrl);
         var timeoutForOne = TimeSpan.FromMinutes(8);
 
-        Log.Info(ToolKey, $"{Path.GetFileName(entry)} -- {CreateAccountRunner.SourceLabel(source)}: {email}" +
+        var launchName = entry.Length > 0 ? Path.GetFileName(entry) : Path.GetFileName(toolboxEntry!);
+
+        Log.Info(ToolKey, $"{launchName} -- {CreateAccountRunner.SourceLabel(source)}: {email}" +
                           (forceNoProxy ? "  (force --no-proxy)" : "") +
                           (xTrick ? "" : "  (x-trick OFF)"));
         Log.Info(ToolKey, $"  cd \"{root}\"");
-        liveLog?.Invoke($"{Path.GetFileName(entry)} -- {CreateAccountRunner.SourceLabel(source)}" +
+        liveLog?.Invoke($"{launchName} -- {CreateAccountRunner.SourceLabel(source)}" +
                         (forceNoProxy ? "  (force --no-proxy)" : ""));
 
-        return await RunAccioAsync(entry, root, email, args, env, timeoutForOne, liveLog, ct)
+        return await RunAccioAsync(entry, root, email, args, env, timeoutForOne, liveLog, ct, toolboxEntry)
             .ConfigureAwait(false);
     }
 
@@ -280,9 +319,8 @@ public sealed class AccioToolDriver : IToolDriver
         if (cookies is null || cookies.Count == 0)
             return DriverResult.Fail("No stored cookies to replay.");
 
-        var root = AccioRoot;
-        var entry = Entry(root);
-        if (entry.Length == 0)
+        var (root, entry, toolboxEntry) = ResolveLaunch();
+        if (entry.Length == 0 && toolboxEntry is null)
             return DriverResult.Fail($"Accio was not found under: {root}");
 
         // Bake the cookie set into a file accio recognises (the same cookie file
@@ -332,7 +370,7 @@ public sealed class AccioToolDriver : IToolDriver
 
             return await RunAccioAsync(entry, root, email, args,
                 env: null, timeout: TimeSpan.FromMinutes(2),
-                liveLog: null, ct: ct).ConfigureAwait(false);
+                liveLog: null, ct: ct, toolboxEntry: toolboxEntry).ConfigureAwait(false);
         }
         finally
         {
@@ -482,9 +520,11 @@ public sealed class AccioToolDriver : IToolDriver
     private static async Task<DriverResult> RunAccioAsync(
         string entry, string root, string email, List<string> args,
         IReadOnlyDictionary<string, string>? env,
-        TimeSpan timeout, Action<string>? liveLog, CancellationToken ct)
+        TimeSpan timeout, Action<string>? liveLog, CancellationToken ct,
+        string? toolboxEntry = null)
     {
-        var isScript = entry.EndsWith(".py", StringComparison.OrdinalIgnoreCase);
+        var useToolbox = toolboxEntry is not null;
+        var isScript = useToolbox || entry.EndsWith(".py", StringComparison.OrdinalIgnoreCase);
         var psi = new ProcessStartInfo
         {
             FileName               = isScript ? PythonToolDriver.ResolvePythonFor(ToolKey) : entry,
@@ -492,13 +532,30 @@ public sealed class AccioToolDriver : IToolDriver
             UseShellExecute        = false,
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
+            // Only a toolbox run needs the pipe: accio itself takes everything
+            // from its flags, but the loader's archive arrives on stdin.
+            RedirectStandardInput  = useToolbox,
             CreateNoWindow         = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding  = Encoding.UTF8
         };
-        // The script has to be the first positional argument, otherwise python
-        // reads our flags as its own options ("unknown option --count").
-        if (isScript) psi.ArgumentList.Add(entry);
+        if (useToolbox)
+        {
+            psi.ArgumentList.Add("-u");
+            psi.Environment["PYTHONUNBUFFERED"] = "1";
+            if (!ToolboxRunner.TryConfigure(psi, toolboxEntry!))
+            {
+                return DriverResult.Fail(
+                    "The panel's embedded tool package could not be read, so accio cannot run. " +
+                    "Reinstall the panel with DeveloperXPanel-Setup.exe.");
+            }
+        }
+        else if (isScript)
+        {
+            // The script has to be the first positional argument, otherwise python
+            // reads our flags as its own options ("unknown option --count").
+            psi.ArgumentList.Add(entry);
+        }
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         // accio's accounts and cookies go beside the exe in accounts\accio\, not
@@ -525,8 +582,8 @@ public sealed class AccioToolDriver : IToolDriver
         }
 
         var argLine = string.Join(' ', args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-        var launchLine = (isScript ? "python " + Path.GetFileName(entry) : Path.GetFileName(entry))
-                         + " " + argLine;
+        var logName = Path.GetFileName(useToolbox ? toolboxEntry! : entry);
+        var launchLine = (isScript ? "python " + logName : logName) + " " + argLine;
         Log.Info(ToolKey, $"  $ {launchLine}");
         liveLog?.Invoke($"$ {launchLine}");
 
@@ -534,10 +591,10 @@ public sealed class AccioToolDriver : IToolDriver
         // row for an address Accio itself might or might not have created.
         AccountStore.Refresh(ToolKey);
 
-        Process proc;
+        var proc = new Process { StartInfo = psi };
         try
         {
-            proc = Process.Start(psi)!;
+            proc.Start();
             // Keep it tied to the panel so a closed panel never leaves this run
             // (or its browser) running in the background.
             ProcessGuard.Adopt(proc);
@@ -565,9 +622,26 @@ public sealed class AccioToolDriver : IToolDriver
             liveLog?.Invoke("[err] " + e.Data);
         };
 
-        proc.Start();
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
+
+        // Feed the loader and the archive down the same pipe, then EOF. Nothing
+        // of the tool's source is ever written to disk. accio takes its real
+        // input from the flags, so there are no extra stdin lines to send.
+        if (useToolbox)
+        {
+            try
+            {
+                await ToolboxRunner.WriteStdinAsync(proc.StandardInput.BaseStream,
+                        Array.Empty<string>())
+                    .ConfigureAwait(false);
+                proc.StandardInput.BaseStream.Close();
+            }
+            catch
+            {
+                // The child may already have exited; the exit code tells the story.
+            }
+        }
 
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
