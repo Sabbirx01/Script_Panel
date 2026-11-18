@@ -1,13 +1,1 @@
-{
-    "version":  "2.3.0",
-    "tag":  "v2.3.0",
-    "published":  "2026-11-17T12:04:29Z",
-    "notes":  "New in 2.3.0: choose your own install folder in the setup, and a complete uninstaller.",
-    "packageUrl":  "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.3.0/DeveloperXBulkAccPanel-v2.3.0.zip",
-    "sha256":  "d3679e98ebaf8d001d53fd6ce0068664965349bd90ac179e0b609915aa02df3b",
-    "size":  129670330,
-    "setupUrl":  "https://github.com/Sabbirx01/Script_Panel/releases/download/v2.3.0/DeveloperXPanel-Setup.exe",
-    "setupSha256":  "b867d9459b9e03be020d763d6eb5be4424cc54e1fe1fd36fee9c4078b6705663",
-    "setupSize":  653231494,
-    "bundleTools":  "08ebbe83f6790360d83340c812d7b0028d445f8fb3d4c67e4eecc84911ff10ce"
-}
+{"version":"2.3.1","tag":"v2.3.1","published":"2026-11-18T09:39:09Z","notes":"Developer X Bulk Acc Panel v2.3.1","packageUrl":"https://github.com/Sabbirx01/Script_Panel/releases/download/v2.3.1/DeveloperXBulkAccPanel-v2.3.1.zip","sha256":"eefefde17549a0e27442d3b3d936f835cf0846260b80d75c2d4cae26630f5d6a","size":130120185,"setupUrl":"https://github.com/Sabbirx01/Script_Panel/releases/download/v2.3.1/DeveloperXPanel-Setup.exe"}
