@@ -177,8 +177,17 @@ if (-not $SkipSetupUpload) {
 
     & git -C $root add docs/update.json
     & git -C $root commit -m ("release: full package for " + $tag + " (tools " + $info.toolsSha256.Substring(0, 12) + ")") 2>&1 | Out-Null
-    & git -C $root push origin HEAD:main 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'could not push the feed commit - panels would never see the full package' }
+    # git prints its progress on STDERR. With $ErrorActionPreference='Stop'
+    # that becomes a NativeCommandError the moment it is merged into the
+    # pipeline - which is what aborted v2.3.1 AFTER the commit had already been
+    # pushed, so a good release looked like a failure and step 5 never ran.
+    # Send stderr to $null and judge by the exit code only.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & git -C $root push origin HEAD:main 2>$null
+    $pushExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($pushExit -ne 0) { throw 'could not push the feed commit - panels would never see the full package' }
     Ok ("feed carries the setup and the tools fingerprint " + $info.toolsSha256.Substring(0, 12))
 } else {
     Step 4 'skipping setup upload (-SkipSetupUpload)'
